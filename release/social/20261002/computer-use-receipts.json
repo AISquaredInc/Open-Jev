@@ -54,5 +54,21 @@
     "confirmed_at_utc": "2026-10-02T19:43:29.218Z",
     "confirmation": "Your post was sent; matching own-timeline text and status URL, with blank lines.",
     "method": "Chrome Computer Use"
+  },
+  {
+    "milestone": "temporal-fixed-pilot",
+    "url": "https://x.com/Zefan_Cai/status/2106109331917947166",
+    "text": "🧪 Higher synthetic accuracy hid worse decisions.\n\nOpen-Jev-2B, fixed 64 steps:\nTest: 15/32 → 24/32\nOOD: 17/32 → 25/32\n\nBut all 12 outside-window Choice cases selected accept. Old-task accuracy also fell.\n\nNo release promotion. Full audit 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/1f26c833bfc3ff75505437aaa00903f42d4071b6/docs/temporal-windows-v5.md",
+    "confirmed_at_utc": "2026-10-02T19:49:59.544Z",
+    "confirmation": "Your post was sent; matching exact own-timeline text and status URL, with blank lines.",
+    "method": "Chrome Computer Use"
+  },
+  {
+    "milestone": "ms-27b-validation",
+    "url": "https://x.com/Zefan_Cai/status/2106110394960093685",
+    "text": "🔬 Open-Jev-27B backend check on H100.\n\n✅ 336 Torch/Triton parity checks\n✅ Zero decision/threshold flips\nMax probability error: 1.89e-6\n\nWhole-model P50 gain: 0.4–2%, significance unproven.\n\nCommunity fast-CUDA failed the probability gate. Evidence 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/97059fd74dfd1ce0d9e9fb8207d76894432339f1/reports/efficiency-20261002/ms-27b-safe-full-summary.md",
+    "confirmed_at_utc": "2026-10-02T19:57:40.286Z",
+    "confirmation": "Matching exact own-timeline text and status URL with blank lines; verified before any retry.",
+    "method": "Chrome Computer Use"
   }
 ]

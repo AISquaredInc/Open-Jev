@@ -98,13 +98,13 @@ def _file_sha256(path):
     return result.hexdigest()
 
 
-def training_identity(args, data_sha256, rows_by_split, runtime):
+def training_identity(args, data_sha256, rows_by_split, runtime, initial_checkpoint=None):
     """Paths/checkpoint frequency are transport details; all training facts bind."""
     return {"arguments": {**{key: getattr(args, key) for key in IDENTITY_ARGUMENTS},
                            "training_sampling": getattr(args, "training_sampling", "source_kind_round_robin")},
             "optimizer": OPTIMIZER_SETTINGS, "data_sha256": data_sha256,
             "selected_ids": {split: [row["id"] for row in rows] for split, rows in rows_by_split.items()},
-            "runtime": runtime,
+            "runtime": runtime, **({"initial_checkpoint": initial_checkpoint} if initial_checkpoint else {}),
             "implementation_sha256": {name: _file_sha256(Path(__file__).with_name(name))
                                        for name in ("train.py", "model.py", "api.py", "data.py", "metrics.py")}}
 
@@ -220,8 +220,60 @@ def restore_training_artifacts(checkpoint, output):
     for name in ("training.jsonl", *BASELINE_FILES):
         shutil.copyfile(checkpoint / name, output / name)
 
+
+def initial_checkpoint_identity(args):
+    path = getattr(args, "initial_checkpoint", None)
+    if not path:
+        return None
+    if getattr(args, "resume_training", None):
+        raise ValueError("initial-checkpoint and resume-training cannot be combined")
+    if getattr(args, "checkpoint_every", 0) > 0:
+        raise ValueError("initial-checkpoint adaptation does not support resumable snapshots; checkpoint-every must be zero")
+    path = Path(path)
+    source, output = path.resolve(), Path(args.output).resolve()
+    if source.is_relative_to(output) or output.is_relative_to(source):
+        raise ValueError("Training output and initial checkpoint must not overlap or contain one another")
+    weights = [p.relative_to(path).as_posix() for p in (path / "adapter").glob("adapter_model.*")
+               if p.suffix in (".bin", ".safetensors")]
+    names = ["model.json", "head.pt", "temperature.json", "adapter/adapter_config.json", *weights]
+    if not weights or any(not (path / name).is_file() for name in names):
+        raise ValueError("Initial checkpoint requires config, LoRA weights, head and temperature")
+    hashes = {name: _file_sha256(path / name) for name in sorted(names)}
+    config = json.loads((path / "model.json").read_text())
+    adapter = json.loads((path / "adapter/adapter_config.json").read_text())
+    if (config.get("method") != "independent_candidate_lora_nll_brier" or adapter.get("peft_type") != "LORA"
+            or type(adapter.get("r")) is not int or adapter["r"] != config["lora_rank"] or adapter.get("rank_pattern")
+            or adapter.get("base_model_name_or_path") not in (None, "", config["model_id"])
+            or adapter.get("revision") not in (None, config["revision"])):
+        raise ValueError("Initial adapter method/type/rank/base/revision differs from model configuration")
+    temperature = float(json.loads((path / "temperature.json").read_text())["temperature"])
+    if (config["model_id"], config["revision"], config["lora_rank"], config["max_length"]) != (
+            args.model, args.revision, args.lora_rank, args.max_length) or not re.fullmatch(r"[0-9a-fA-F]{40}", config["revision"]):
+        raise ValueError("Initial checkpoint model/revision/rank/max_length differs from requested profile")
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("Initial checkpoint temperature must be finite and positive")
+    return {"files_sha256": hashes, "sha256": _json_sha256(hashes), "config": config,
+            "adapter_config": adapter, "temperature": temperature}
+
+
+def initialize_model(args, model_class, initial_checkpoint):
+    if initial_checkpoint is None:
+        return model_class(args.model, args.revision, lora_rank=args.lora_rank, max_length=args.max_length)
+    if initial_checkpoint_identity(args) != initial_checkpoint:
+        raise ValueError("Initial checkpoint changed after preflight")
+    model = model_class.load(args.initial_checkpoint)
+    model.requires_grad_(False)
+    for name, parameter in model.named_parameters():
+        if name.startswith("head.") or ".lora_A." in name or ".lora_B." in name:
+            parameter.requires_grad_(True)
+    model.backbone.gradient_checkpointing_enable()
+    model.backbone.enable_input_require_grads()
+    return model
+
+
 def run(args):
     source_commit = source_checkout_commit(__file__)
+    initial_checkpoint = initial_checkpoint_identity(args)
     import torch
     from .model import DecisionModel
     from importlib.metadata import version
@@ -253,13 +305,15 @@ def run(args):
     data_sha256 = {split: _file_sha256(Path(args.data) / f"{split}.jsonl")
                    for split in ("train", "calibration", "validation", "test", "ood") if (Path(args.data) / f"{split}.jsonl").exists()}
     runtime = {"torch": str(torch.__version__), "transformers": version("transformers"), "peft": version("peft")}
-    identity = training_identity(args, data_sha256, {"train": train, "calibration": calibration, "test": test, "ood": ood}, runtime)
+    identity = training_identity(args, data_sha256, {"train": train, "calibration": calibration, "test": test, "ood": ood}, runtime, initial_checkpoint)
     resume = read_training_checkpoint(args.resume_training, identity) if args.resume_training else None
     if resume:
         restore_training_artifacts(args.resume_training, out)
     meta = dict(resume["run_metadata"]) if resume else {}
     meta.update(vars(args))
     meta.update({"commit": source_commit,
+                 "initial_checkpoint_identity": initial_checkpoint,
+                 "baseline_initialization": "inference_checkpoint" if initial_checkpoint else "base_model",
                  "torch": str(torch.__version__), "gpu": torch.cuda.get_device_name(),
                  "data_sha256": data_sha256, "run_identity_sha256": _json_sha256(identity),
                  "evaluation_ids": [r["id"] for r in test], "ood_ids": [r["id"] for r in ood],
@@ -270,7 +324,7 @@ def run(args):
                     resumed_at=time.time(), output=str(out), checkpoint_every=args.checkpoint_every)
     (out / "run.json").write_text(json.dumps(meta, indent=2) + "\n")
     print(json.dumps({"event": "load", "model": args.model, "revision": args.revision}), flush=True)
-    model = DecisionModel(args.model, args.revision, lora_rank=args.lora_rank, max_length=args.max_length)
+    model = initialize_model(args, DecisionModel, initial_checkpoint)
     from transformers import __version__ as transformers_version
     from transformers.models.qwen3_5.modeling_qwen3_5 import is_fast_path_available
     meta.update(transformers=transformers_version, fast_path_available=bool(is_fast_path_available),
@@ -289,7 +343,7 @@ def run(args):
         for name, values, rows in (("test", baseline, test), ("ood", baseline_ood, ood), ("calibration", baseline_cal, calibration)):
             validate_baseline_identity(values, rows, name)
     else:
-        # LoRA B=0: exactly the initial base Yes-minus-No scorer.
+        # Measure the actual initialized weights before any optimizer update.
         baseline = evaluate(model, test, out / "baseline_test.jsonl")
         baseline_ood = evaluate(model, ood, out / "baseline_ood.jsonl")
         baseline_cal = evaluate(model, calibration, out / "baseline_calibration.jsonl")
@@ -423,6 +477,7 @@ def main():
                    default="source_kind_round_robin", help="Use shuffled for a full pass without a source-sorted tail")
     p.add_argument("--checkpoint-every", type=int, default=0, help="Save resumable state every N completed optimizer steps; zero disables")
     p.add_argument("--resume-training", help="Resume from a training-checkpoints/step-* directory with matching run identity")
+    p.add_argument("--initial-checkpoint", help="Adapt matching inference LoRA/head weights; excludes resume and requires checkpoint-every=0")
     run(p.parse_args())
 
 
