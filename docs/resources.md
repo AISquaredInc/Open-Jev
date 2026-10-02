@@ -1,3 +1,24 @@
+# Runtime and deployment records
+
+**Current public deployment entry:** [released-model deployment guide](deployment.md).
+The 2B, 9B and 27B v1.1 adapter/head packages are published. The
+[27B full internal audit](internal-full-evaluation.md) and historical 231-public
+result are complete; [fresh independent 27B sealed evaluation](evaluation-ledger.md)
+remains pending. The machine allocations and unfinished training statements
+below are historical operational snapshots, not current job or release status.
+
+The [2026-10-02 deployment validation](../reports/deployment-validation-20261002/report.json)
+records fresh base-wheel/API checks without loading model weights. It does
+not claim fresh Linux CUDA, full-size MPS or trained GPU inference validation.
+
+Separate [H200 released-2B measurements](../reports/efficiency-20261002/h200-2b-summary.md)
+now record actual model inference, HTTP and parity, with the pinned checkpoint,
+verified base files and runtime versions. They reused a read-only runtime with
+an isolated package overlay. The [reproducibility receipt](reproducibility-receipt-20261002.md)
+distinguishes these measurements from the clean base-package checks.
+
+## Archived operational records
+
 # 集群与模型运行环境
 
 ## 当前分配：仅 MS N1-1 前四张卡

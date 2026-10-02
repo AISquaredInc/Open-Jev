@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "observed_at_utc": "2026-10-02T16:39:49.750824+00:00",
+  "model_family": "ZefanCai/Open-Jev",
+  "entries": [
+    {
+      "protocol": "jevbench-public-231",
+      "benchmark_commit": "f8ce71361165846101d02ebc83ad44e47ae44fc3",
+      "scope": "231 public tasks from the historical 534-task benchmark; no sealed score",
+      "denominators": {
+        "original": 72,
+        "easy": 48,
+        "hard": 111,
+        "total": 231
+      },
+      "metric": "raw reference-match accuracy",
+      "source": "https://github.com/Zefan-Cai/Open-Jev/blob/main/docs/jevbench-public.md",
+      "models": [
+        {
+          "model": "Open-Jev-2B",
+          "correct": 150,
+          "hard_correct": 46
+        },
+        {
+          "model": "Open-Jev-9B",
+          "correct": 179,
+          "hard_correct": 66
+        },
+        {
+          "model": "Open-Jev-27B-v1.1",
+          "correct": 197,
+          "hard_correct": 80
+        }
+      ],
+      "timing_note": "Historical 27B: four-rank shared H100 direct execution. Not single-GPU HTTP latency."
+    },
+    {
+      "protocol": "JevBench v1.4",
+      "status": "historical_evaluator_report",
+      "source": "https://github.com/Zefan-Cai/Open-Jev/issues/3",
+      "metric": "reported raw accuracy and version-specific composite",
+      "leading_model": "Open-Jev-9B",
+      "reported_public_accuracy": 0.775,
+      "reported_sealed_accuracy": 0.299,
+      "reported_rank": 59,
+      "reported_composite": 11.2,
+      "scope_note": "The v1.4 sealed set was hard-style; public and sealed difficulty mixes differed. This is historical, not the v1.5.4 result."
+    },
+    {
+      "protocol": "JevBench v1.5.4",
+      "status": "independent_snapshot",
+      "source": "https://benchmarkheaven.com/jev-models/v1.5.4",
+      "aggregate_source": "https://benchmarkheaven.com/api/jevbench/v1.5.4",
+      "aggregate_response_sha256": "0cf210b76bf85084a5f3fb40fb109e9a2c2f93df42ff6628696377666e89db45",
+      "denominators": {
+        "open": 904,
+        "sealed": 720,
+        "total": 1624,
+        "published_open": 601
+      },
+      "metric": "chance-corrected competence and version-specific composite; not raw accuracy",
+      "models": [
+        {
+          "model": "Open-Jev 9B (Zefan Cai)",
+          "key": "open-jev-zefan-9b",
+          "rank": 46,
+          "composite": 24.35608345131106,
+          "I_open": 61.78593118508326,
+          "I_sealed": 65.85512609239782,
+          "noul_abstention_rate": 0.13131313131313127,
+          "measured_p50_seconds": 0.5631460719741881,
+          "measured_p95_seconds": 1.640916511422256,
+          "speed_adjustment": "x2 + 0.15 s (assumption, not measured)",
+          "cost": {
+            "kind": "estimate",
+            "usd_per_1000": 0.17041317733990147,
+            "basis": "documented hosted-model estimate"
+          }
+        },
+        {
+          "model": "Open-Jev 2B (Zefan Cai)",
+          "key": "open-jev-zefan-2b",
+          "rank": 65,
+          "composite": 9.072856494116836,
+          "I_open": 38.78572545166409,
+          "I_sealed": 28.34262070147809,
+          "noul_abstention_rate": 0.29292929292929293,
+          "measured_p50_seconds": 0.42904718848876655,
+          "measured_p95_seconds": 1.2403676671441641,
+          "speed_adjustment": "x2 + 0.15 s (assumption, not measured)",
+          "cost": {
+            "kind": "estimate",
+            "usd_per_1000": 0.17041317733990147,
+            "basis": "documented hosted-model estimate"
+          }
+        }
+      ],
+      "noul_scoring": "p_yes <= 0.2 means No; p_yes >= 0.8 means Yes; intermediate probabilities abstain and count wrong for competence. Report coverage alongside raw accuracy.",
+      "scope_note": "v1.5 uses matched open/sealed tier mixes and per-item chance correction. Do not join versions into an accuracy trend."
+    },
+    {
+      "protocol": "fresh-independent-27b",
+      "model": "Open-Jev-27B-v1.1",
+      "status": "pending_independent_evaluator",
+      "results": null,
+      "reference_scope": "Evaluator-owned frozen open/sealed suite. No private questions or labels requested. Handoff preparation is not evaluation."
+    }
+  ]
+}

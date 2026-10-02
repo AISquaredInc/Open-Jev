@@ -381,7 +381,7 @@ def execute_candidates(state, options):
                     not isinstance(rows[0][0], (int, float)) or not math.isfinite(rows[0][0]))):
                 raise ValueError("Candidate must produce one finite numeric or NULL value")
             result.append(rows)
-    except sqlite3.Error as error:
+    except (sqlite3.Error, sqlite3.Warning) as error:
         raise ValueError("Invalid candidate SQL: " + str(error)) from error
     finally:
         connection.close()

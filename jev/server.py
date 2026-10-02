@@ -122,6 +122,10 @@ def main():
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--max-length", type=int)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--backend", choices=("torch", "triton-tail", "fast-cuda"), default="torch",
+                        help="Experimental CUDA acceleration; default torch is unchanged")
+    parser.add_argument("--fused-final-head", action=argparse.BooleanOptionalAction, default=True,
+                        help="Fuse final RMSNorm and scalar scoring in fast-cuda (default on)")
     parser.add_argument("--prefix-cache", action=argparse.BooleanOptionalAction, default=False,
                         help="Enable request-local token-prefix reuse; default off pending full-checkpoint BF16 validation")
     parser.add_argument("--host", default="127.0.0.1")

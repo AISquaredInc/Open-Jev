@@ -114,7 +114,10 @@ class TorchScorer:
 
 
 def load_predictor(*, checkpoint=None, model_id=None, revision=None, device="cuda:0",
-                   max_length=None, batch_size=32, prefix_cache=False):
+                   max_length=None, batch_size=32, prefix_cache=False, backend="torch",
+                   fused_final_head=True):
+    if backend not in ("torch", "triton-tail", "fast-cuda"):
+        raise ValueError("backend must be torch, triton-tail, or fast-cuda")
     from .model import DecisionModel
     if bool(checkpoint) == bool(model_id):
         raise ValueError("choose exactly one checkpoint or base model")
@@ -152,5 +155,9 @@ def load_predictor(*, checkpoint=None, model_id=None, revision=None, device="cud
             text=True, stderr=subprocess.DEVNULL).strip()
     except (OSError, subprocess.CalledProcessError):
         provenance["code_commit"] = None
-    return Predictor(TorchScorer(model), model_name=model.model_id, temperature=temperature,
-                     batch_size=batch_size, method=method, provenance=provenance, prefix_cache=prefix_cache)
+    predictor = Predictor(TorchScorer(model), model_name=model.model_id, temperature=temperature,
+                          batch_size=batch_size, method=method, provenance=provenance, prefix_cache=prefix_cache)
+    if backend != "torch":
+        from .fast_backend import enable_fast_backend
+        predictor = enable_fast_backend(predictor, backend, fused_head=fused_final_head)
+    return predictor

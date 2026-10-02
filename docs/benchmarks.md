@@ -4,6 +4,125 @@ This index consolidates completed measurements from the published reports. Each 
 
 [Project website](https://zefan-cai.github.io/open-jev/) · [Website benchmark tables](https://zefan-cai.github.io/open-jev/benchmarks/) · [Hugging Face collection](https://huggingface.co/collections/ZefanCai/open-jev)
 
+## Versioned independent results
+
+The [evaluation ledger](evaluation-ledger.md) preserves the old 231-public
+protocol, historical v1.4 report, and observed independent v1.5.4 snapshot.
+v1.4 used different public/sealed difficulty mixtures; v1.5 uses matched tier
+mixtures and chance-corrected competence. Neither its competence nor its
+composite is raw accuracy. On v1.5.4, 9B is #46 / 24.356 and 2B #65 / 9.073.
+The old v1.4 29.9% sealed figure is a historical report, not current 9B performance.
+
+Fresh independent 27B v1.1 evaluation remains pending. The [executable handoff](../scripts/prepare_independent_evaluation.py)
+pins code, model/base/checkpoint identity and request settings without claiming
+new sealed results. See the [machine-readable snapshot](../site/evaluation-ledger.json).
+
+## Operator and released 2B efficiency on H200
+
+The isolated Triton final-row gather, optional BF16 residual, RMSNorm and FP32
+scalar head measured **2.63–2.75× warm P50 operator speedup** against the Torch
+reference on one NVIDIA H200. All nine seeded activation cases passed parity:
+maximum logit error **1.12e-7**, maximum probability error **2.09e-8**, with zero
+decision changes or threshold flips. Each case used ten warmups and 100 timed
+iterations. The separate suite passed two CUDA checks and ten profile,
+ownership and reference checks.
+
+The released 2B comparison separately measured **1.006–1.020× whole-model
+warm P50 ratios** and **1.002–1.034× loopback HTTP ratios** across eight
+workloads. Twenty samples and three warmups per workload came from sequential
+model runs. These small differences do not establish statistically significant
+whole-model gains. Both paths had the same **6.917 GiB** maximum observed
+per-request peak allocation. The isolated operator ratio does not describe
+whole-model or HTTP performance.
+
+All 168 in-process and 168 loopback HTTP comparisons passed on the recorded
+workloads, with maximum probability error 1e-7, zero decision changes and zero
+audited threshold flips. The published 2B checkpoint, all five inference files
+and all 13 pinned base/tokenizer files were verified before execution. The
+frozen public-development comparison is described separately below. The Python 3.12.13
+runtime used existing `runtime312` packages plus a selected dependency overlay;
+it was not a fresh clean Linux installation. See the
+[reproducibility receipt](reproducibility-receipt-20261002.md).
+
+Sources: [measured operator report](https://github.com/Zefan-Cai/Open-Jev/blob/4898a2923cecb2fd62b25b5cde8d64741d9cfe2e/reports/efficiency-20261002/h200-kernel-summary.md),
+[raw measurements](https://github.com/Zefan-Cai/Open-Jev/blob/4898a2923cecb2fd62b25b5cde8d64741d9cfe2e/reports/efficiency-20261002/h200-kernel-results-ed28.json).
+The [released 2B report](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-summary.md)
+retains all workloads, cold calls, allocator figures and both raw JSON reports.
+[Implementation PR #14](https://github.com/Zefan-Cai/Open-Jev/pull/14) tracks the changes.
+
+### One fixed synthetic continued-training pilot
+
+The released 2B checkpoint completed 64 fixed steps on original synthetic
+counterfactual controls, with temperature fitted only on separate synthetic
+calibration rows. The adapted checkpoint is experimental, not a released
+model. Argmax accuracy rose from **84/128 (65.625%) to 99/128
+(77.34375%)** on Test and **83/128 (64.84375%) to 95/128 (74.21875%)** on
+controlled OOD variants. This is one seed and a released-checkpoint baseline,
+not a pretrained-base comparison or broad real-world generalization result.
+
+Regressions and unsolved families remain visible: numeric Test stayed
+30%→30%, numeric OOD fell 35%→30%, and timeline OOD fell 58.33%→54.17%.
+Saved/reloaded probability error was zero. Training source was `80ca8e8`.
+These synthetic results do not establish natural-support or JevBench transfer;
+the separate public-development comparison below retains its limited scope.
+
+Sources: [full training summary](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/frontier-controls-v4/continued-2b-20261002/summary.json),
+[completion and checkpoint receipt](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/frontier-controls-v4/continued-2b-20261002/completion-receipt.json).
+The nonweight artifacts retain all four prediction journals and their locks.
+
+### Frozen 64-task public-development comparison
+
+On the same locked requests, Choice stayed **17/34**, and Noul stayed **9/23**
+under documented v1.5 inclusive 0.2/0.8 abstention rules. Noul answered coverage
+changed 17/23 → 18/23; the extra answer was incorrect. All Choice decisions
+were unchanged. Across seven Score items,
+expected-position normalized MAE fell **0.22393 → 0.20645**; auxiliary argmax
+correct stayed 2/7, with four MAE improvements and three regressions.
+Equal-type, available-tier-weighted subset competence rose
+**22.835 → 24.257**, driven only by Score. No Choice or Noul accuracy gain was
+observed.
+
+Both source/base identities and the 16,384-token limit matched. Checkpoint
+weights and saved temperature changed together (1.518796342858676 →
+1.5446931834967927), so weight adaptation and recalibration are not isolated.
+This is one development sample with no uncertainty estimate. It draws from
+231 accessible public tasks; the pinned source lacks the additional documented
+published-open items. Historical public feedback informed the controls. These
+subset metrics are not official I_open, blind/sealed performance, a leaderboard
+composite or a rank. Raw benchmark text, gold and responses remain private.
+
+Sources: [released baseline](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/released-2b-frozen64.json),
+[experimental pilot](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/pilot-2b-frozen64.json),
+[paired comparison](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/pilot-vs-released-frozen64.json),
+[per-item transition aggregates](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/paired-frozen64.json).
+
+## Community evidence and a local support trial
+
+[Five source-bound community excerpts](https://github.com/Zefan-Cai/Open-Jev/blob/1c4347841ce942b8009d9187735fe5686adbbb1b/docs/community-evidence.md)
+motivate natural-text workflow tests. These describe TypeSafe Jev and related
+experiments; they are not Open-Jev customer endorsements.
+
+The [support-routing trial guide](https://github.com/Zefan-Cai/Open-Jev/blob/1c4347841ce942b8009d9187735fe5686adbbb1b/docs/support-routing.md)
+runs on the reader's local checkpoint server. BANKING77 messages go through
+eight retrieved intent candidates plus a review option, a frozen confidence
+policy, named human corrections and CSV export. This is a local application,
+not a live GPU demo on the static website. Completed external human trials
+remain zero until a saved pilot establishes otherwise.
+
+The measured released 2B trial is a **negative result** on 256 natural official
+test utterances: **166/256 correct (64.8%)**, versus **211/256 (82.4%)** for
+retrieval top-1 BM25. The fixed eight-candidate recall is 249/256 (97.3%). The
+locked calibration policy accepted 88/256 rows (34.4% coverage); **14/88 were
+wrong (15.9% accepted error)**, missing its 90% accepted-accuracy calibration
+target on test. The remaining 168/256 rows require review. The threshold was
+not retuned on test. Browser automation exercised 12 natural training examples
+against the real checkpoint API, with all 12 left unresolved for review and
+zero human corrections. This engineering check is not an external human trial.
+
+Sources: [natural support evaluation and lock](https://github.com/Zefan-Cai/Open-Jev/tree/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/support-routing-20261002),
+[actual-model browser smoke](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/support-routing-20261002/browser-smoke.json).
+The model ranker needs improvement before it can replace the stronger retrieval baseline.
+
 ## Full internal evaluation
 
 | Model | Old Test | Old OOD | Expanded Test | Expanded OOD |

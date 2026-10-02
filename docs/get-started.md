@@ -56,6 +56,8 @@ The [project website workbench](https://zefan-cai.github.io/open-jev/workbench/)
 
 ## For deployers: start the workbench
 
+The [deployment guide](deployment.md) provides the unified platform matrix and exact model pins.
+
 The commands below use the existing **Linux + NVIDIA GPU** inference path and require Python 3.10+, a CUDA environment, and sufficient GPU memory. The deployer handles installation; end users only need a browser. Complete verification of installation in a fresh environment is still being improved.
 
 Install from a Git checkout so the workbench files are included. The `train` dependency group also provides inference dependencies; installing it does not start training.
@@ -91,6 +93,6 @@ To share a self-hosted service with others, use an HTTPS reverse proxy to serve 
 
 ## Add it to your own project
 
-An existing backend can use the [Python Client](../jev/client.py) for the same classification requests. See [Typed decisions in the README](../README.md#typed-decisions) for request examples. The browser workbench can be shared directly with people who need to organize spreadsheets.
+An existing backend can use the [Python Client](../jev/client.py) for the same classification requests. See [request examples in the README](../README.md#try-it) for request examples. The browser workbench can be shared directly with people who need to organize spreadsheets.
 
-The community [Docker deployment PR #1](https://github.com/Zefan-Cai/Open-Jev/pull/1) has not completed review and is maintained separately from this CPU Space deployment package. Future additions could include n8n and Dify connectors and more business templates. The first version focuses on a complete workflow: enter messages → define categories → review results → export a spreadsheet.
+The community [Docker deployment PR #1](https://github.com/Zefan-Cai/Open-Jev/pull/1) is merged. See the [deployment matrix](deployment.md) for Docker, NVIDIA, CPU, Apple Silicon MPS and the community 16GB 9B recipe. Future additions could include n8n and Dify connectors and more business templates. The first version focuses on a complete workflow: enter messages → define categories → review results → export a spreadsheet.

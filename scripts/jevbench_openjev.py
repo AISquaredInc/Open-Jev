@@ -193,7 +193,7 @@ def attempt(workload, endpoint, expected, timeout, prefix_cache=False):
 
 
 def collect(requests, input_sha256, endpoint, expected, output, *, timeout=120, max_seconds=3600,
-            prefix_cache=False):
+            prefix_cache=False, scope=SCOPE, upstream_commit=UPSTREAM_COMMIT):
     validate_identity_config(expected)
     if type(prefix_cache) is not bool:
         raise ValueError("prefix_cache must be a boolean")
@@ -207,8 +207,8 @@ def collect(requests, input_sha256, endpoint, expected, output, *, timeout=120, 
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     (output / "requests.json").write_bytes(raw)
-    report = {"schema_version": 1, "status": "running", "scope": SCOPE,
-              "upstream_commit": UPSTREAM_COMMIT, "input_sha256": input_sha256,
+    report = {"schema_version": 1, "status": "running", "scope": scope,
+              "upstream_commit": upstream_commit, "input_sha256": input_sha256,
               "source_sha256": sha256(Path(__file__).read_bytes()), "expected_identity": expected,
               "endpoint": endpoint, "planned_requests": len(workloads), "started_requests": 0,
               "attempted_requests": 0, "successful_requests": 0, "failed_requests": 0,
