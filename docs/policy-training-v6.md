@@ -1,9 +1,12 @@
 # Prepared original-policy mixture v6
 
-This is preparation for a future controlled adaptation from the exact released
-Open-Jev-2B. No training, GPU verification, release replacement or measured
-improvement has occurred. The failed exclusion-boundary v5 checkpoint is not
-the initialization. Upstream author training/demo/test rows contribute zero.
+The fixed adaptation from the exact released Open-Jev-2B has now completed.
+The [full report](../reports/policy-v6-training-20261002/README.md) records
+692 steps, the same-runtime comparison, independent replay and unresolved
+rejection/capacity failures. The candidate is not promoted. The preparation
+below remains the original frozen protocol; the failed exclusion-boundary v5
+checkpoint was not the initialization. Upstream author training/demo/test
+rows contribute zero.
 
 ## Allocation and immutable preparation
 
@@ -87,3 +90,33 @@ untrusted-text pairs, temporal exclusions and state tracking visible. Neither
 the fixed final checkpoint nor the thresholds may be retuned using Test/OOD.
 Synthetic gains would not establish natural-request or official JevBench
 progress, and no automated promotion is part of this preparation.
+
+## Fixed comparison runner
+
+`scripts.compare_policy_training_v6` implements the declared comparison after
+training finishes. It requires the controlled driver's completion receipt,
+which binds all final checkpoint files and the run, summary, step journal and
+Calibration logits. It verifies the frozen mixture, selected rows, complete
+692-step journal, initialization and Calibration-only temperature before
+loading either model. The evaluation checkout must be a pushed commit whose
+training and generator bytes still match the frozen training source.
+
+```bash
+python -m scripts.compare_policy_training_v6 \
+  --dataset /path/to/policy-training-v6-20261002-r1 \
+  --released-checkpoint /path/to/released-2b/checkpoint \
+  --training-run /path/to/policy-v6-adaptation \
+  --completion-receipt /path/to/completion-receipt.json \
+  --output /path/to/fresh-comparison \
+  --expected-commit EVALUATION_COMMIT
+```
+
+The runner loads released and adapted weights sequentially on the same CUDA
+device and records 392 predictions for each: v6 Test/OOD 36 each, v4 128 each
+and v5 32 each. Raw logits support the four combinations of model weights and
+released/adapted temperatures. Reports retain family and boundary breakdowns,
+paired decision changes and benign/injected outcome consistency. Input and
+checkpoint hashes are checked again after inference. An incomplete prediction
+or changed input prevents a complete summary. Per-row synchronized times are
+recorded for diagnosis; ordered loads and compilation do not establish a
+speedup. CPU checks of this runner do not establish a training result.
