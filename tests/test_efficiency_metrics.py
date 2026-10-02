@@ -3,7 +3,7 @@ import copy
 import math
 import unittest
 
-from scripts.benchmark_efficiency import compare_responses, percentile, summarize
+from scripts.benchmark_efficiency import compare_responses, independent_fixture_suite, percentile, summarize
 
 
 def choice(a=.6, b=.4):
@@ -37,6 +37,24 @@ class EfficiencyMetricsTest(unittest.TestCase):
         check = compare_responses(a, b)
         self.assertEqual(check["changed_decisions"], ["gate"])
         self.assertEqual(check["threshold_flips"]["0.5"]["noul_true"], 1)
+
+    def test_official_noul_thresholds_point_two_and_point_eight_are_audited(self):
+        for threshold in (.2, .8):
+            a = {"answers": {"gate": {"type": "noul", "noul": threshold - 1e-6}}}
+            b = {"answers": {"gate": {"type": "noul", "noul": threshold + 1e-6}}}
+            check = compare_responses(a, b)
+            self.assertFalse(check["passed"])
+            self.assertEqual(check["threshold_flips"][str(threshold)]["noul_true"], 1)
+
+    def test_independent_suite_is_deterministic_and_compiles_mixed_types(self):
+        from jev.api import compile_request
+        first = independent_fixture_suite()
+        self.assertEqual(first, independent_fixture_suite())
+        self.assertEqual(len(first), 7)
+        compiled = [compile_request(w["request"]["state"], w["request"]["questions"]) for w in first]
+        self.assertEqual({r["kind"] for r in compiled[0]}, {"choice", "noul", "score"})
+        self.assertGreater(len(first[2]["request"]["state"]["audit_trail"]),
+                           len(first[1]["request"]["state"]["audit_trail"]))
 
     def test_missing_reordered_and_nonfinite_probabilities_fail(self):
         b = copy.deepcopy(choice())

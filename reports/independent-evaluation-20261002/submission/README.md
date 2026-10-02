@@ -3,7 +3,7 @@
 Prepared input only. No new public or sealed result has been produced.
 
 On a Linux NVIDIA host with sufficient BF16 27B memory, run `bash install-and-serve.sh`.
-This pins loader `b718c4beaaf13af7d37504a23e99ef599e216e67`, model package `28cf73067d5b337860bbef3c85b8b82ba8730956` and base
+This pins loader `1c4347841ce942b8009d9187735fe5686adbbb1b`, model package `28cf73067d5b337860bbef3c85b8b82ba8730956` and base
 `Qwen/Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`. Base weights download on the first model load.
 The checkpoint checksum and a clean loader checkout are verified before inference.
 `runtime.json` records allowlisted package versions and GPU inventory; it does

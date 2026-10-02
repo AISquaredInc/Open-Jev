@@ -118,7 +118,9 @@ class FastScorer:
         required = 9 if backend == "fast-cuda" else 8
         if torch.cuda.get_device_capability(device)[0] < required:
             raise RuntimeError(f"selected fast backend requires sm{required}0+")
-        if any(p.device != device or p.dtype != torch.bfloat16 for p in core.parameters()):
+        if any(p.device != device or (p.dtype != torch.bfloat16
+                                      and not (".lora_" in "." + name and p.dtype == torch.float32))
+               for name, p in core.named_parameters()):
             raise ValueError("fast inference requires a fully resident single-device BF16 backbone")
         if any(p.device != device or p.dtype != torch.float32 for p in model.head.parameters()):
             raise ValueError("fast inference requires a resident FP32 decision head")

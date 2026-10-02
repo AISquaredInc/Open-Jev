@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "created_at": "2026-10-02T16:42:38.657225+00:00",
+  "created_at": "2026-10-02T16:50:26.690368+00:00",
   "status": "prepared_not_evaluated",
   "model_repo": "ZefanCai/Open-Jev-27B-v1.1",
   "model_revision": "28cf73067d5b337860bbef3c85b8b82ba8730956",
@@ -10,7 +10,7 @@
     "base_revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
     "checkpoint_sha256": "c49994563c3c4f04a99d9130203c4e526f4ae5086c84deec57698d18cb652e71",
     "temperature": 2.5343690298472983,
-    "code_commit": "b718c4beaaf13af7d37504a23e99ef599e216e67",
+    "code_commit": "1c4347841ce942b8009d9187735fe5686adbbb1b",
     "max_length": 16384
   },
   "request_settings": {
@@ -41,7 +41,7 @@
     "status": "not_run"
   },
   "independent_evaluation": {
-    "reference_snapshot": "JevBench v1.5.4 observed 2026-10-01",
+    "reference_snapshot": "JevBench v1.5.4",
     "reference_denominators": {
       "open": 904,
       "sealed": 720,
@@ -51,5 +51,5 @@
     "results": null,
     "note": "Reference counts are not attempted requests. Evaluator owns its exact protocol and sealed tasks. Request aggregate results and a run manifest, never private questions or labels."
   },
-  "generator_sha256": "468841e1e39bd51e57b367246aee29cb1ecc7574a5fe2ad7b8f7c9db7676e5da"
+  "generator_sha256": "8887bd4593f5e447261aa3b6c1067e363ee36721e65f0a165c690c787b9b85f2"
 }

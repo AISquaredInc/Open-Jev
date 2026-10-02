@@ -8,6 +8,7 @@ import argparse
 from datetime import datetime, timezone
 import gc
 import hashlib
+import http.client
 import importlib.metadata
 import json
 import math
@@ -15,6 +16,7 @@ from pathlib import Path
 import platform
 import statistics
 import subprocess
+import threading
 import time
 
 
@@ -33,7 +35,7 @@ def percentile(values, fraction):
 
 
 def compare_responses(reference, accelerated, tolerance=1e-4,
-                      thresholds=(0.5, 0.7, 0.8, 0.9, 0.95, 0.99)):
+                      thresholds=(0.2, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99)):
     """Strict coverage/order, finite distributions, decisions and threshold audit."""
     if not math.isfinite(tolerance) or not 0 <= tolerance <= 1:
         raise ValueError("probability tolerance must be finite and in [0, 1]")
@@ -164,6 +166,93 @@ def summarize(times, candidates, questions):
             "iterations": len(times)}
 
 
+def independent_fixture_suite():
+    """Original deterministic scaling and policy-boundary inputs, not benchmark training data.
+
+    Policy values straddle 0.2/0.8; actual model probability margins are measured
+    rather than assumed to match those policy values.
+    """
+    workloads = []
+    for name, repeats, candidates in (("short", 0, 2), ("medium", 32, 8), ("long", 128, 16)):
+        state = {"permitted_route": "route_00", "risk": .199999, "support": .800001,
+                 "policy": "Approve only if risk <= 0.2 and support >= 0.8; otherwise human review.",
+                 "audit_trail": "The route remains stationary while a reviewer checks the evidence. " * repeats}
+        questions = {
+            "route": {"type": "choice", "instructions": "Which route is explicitly permitted?",
+                      "criteria": {f"route_{i:02}": f"Select route number {i:02}." for i in range(candidates)}},
+            "approve": {"type": "noul", "instructions": "Does this state satisfy both approval policy limits?",
+                        "criteria": {"true": "Both numerical limits are satisfied.", "false": "One or both limits fail."}},
+            "review": {"type": "score", "instructions": "How many of the two approval limits fail?",
+                       "criteria": ["No limit fails.", "Exactly one limit fails.", "Both limits fail."]}}
+        workloads.append({"id": f"independent-{name}-choice-{candidates}",
+                          "scope": "deterministic original synthetic scaling input",
+                          "request": {"state": state, "questions": questions}})
+    for field, threshold in (("risk", .2), ("support", .8)):
+        for side, delta in (("below", -1e-6), ("above", 1e-6)):
+            state = {"risk": .1, "support": .9,
+                     "policy": "Approve only if risk <= 0.2 and support >= 0.8; otherwise human review."}
+            state[field] = threshold + delta
+            request = {"state": state, "questions": {
+                "approval_gate": {"type": "noul", "instructions": "Do both numerical limits in the policy hold?",
+                                  "criteria": {"true": "Approve.", "false": "Send for human review."}}}}
+            workloads.append({"id": f"independent-policy-{field}-{side}",
+                              "scope": "policy boundary, not a claim of near-threshold model probability",
+                              "policy_threshold": threshold, "request": request})
+    return workloads
+
+
+def loopback_http_benchmark(predictor, request, device, *, iterations, warmup,
+                            reference_response, tolerance):
+    """Local HTTP serialization/socket/service timings on an already loaded model."""
+    from jev.server import make_server, strict_json
+
+    class SynchronizedPredictor:
+        model_name, method = predictor.model_name, predictor.method
+
+        def predict(self, value):
+            sync(device)
+            response = predictor.predict(value)
+            sync(device)
+            return response
+
+    server = make_server(SynchronizedPredictor(), "127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    payload = json.dumps(request, ensure_ascii=False, allow_nan=False).encode()
+
+    def call():
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=120)
+        try:
+            connection.request("POST", "/v1/systemone", payload, {"Content-Type": "application/json"})
+            response = connection.getresponse()
+            body = response.read()
+            if response.status != 200:
+                raise RuntimeError(f"loopback HTTP inference returned status {response.status}")
+            return strict_json(body)
+        finally:
+            connection.close()
+
+    try:
+        cold, first_ms = timed(call, device)
+        checks = [compare_responses(reference_response, cold, tolerance)]
+        for _ in range(warmup):
+            call()
+        times = []
+        for _ in range(iterations):
+            response, elapsed = timed(call, device)
+            times.append(elapsed)
+            checks.append(compare_responses(reference_response, response, tolerance))
+        candidates = cold["metadata"]["candidate_sequences"]
+        return {"scope": "loopback HTTP on an already warmed model; fresh TCP connection per request, concurrency one",
+                "first_observed_http_warm_model_ms": first_ms,
+                "warm_samples_ms": times, **summarize(times, candidates, len(request["questions"])),
+                "parity_checks": checks, "parity_passed": all(c["passed"] for c in checks)}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def kernel_benchmark(device, *, iterations=50, warmup=5, tolerance=1e-4):
     import torch
     from jev.kernels.final_score import final_rms_head, reference_final_rms_head
@@ -219,18 +308,23 @@ def kernel_benchmark(device, *, iterations=50, warmup=5, tolerance=1e-4):
 
 
 def model_benchmark(checkpoint, requests, backends, device, *, iterations, warmup,
-                    tolerance, batch_size, reference=None, fused_final_head=True):
+                    tolerance, batch_size, reference=None, fused_final_head=True,
+                    include_http=True, progress=None):
     import torch
     from jev.api import candidate_prompts, compile_request
     from jev.serving import load_predictor
     records = [compile_request(req["state"], req["questions"]) for req in requests]
-    report = {"measurement_scope": "Predictor end to end, tokenization+GPU+formatting; no HTTP/network",
-              "request_sha256": [digest(r) for r in requests], "backends": {}, "comparisons": []}
+    report = progress if progress is not None else {}
+    report.update(measurement_scope="Predictor and separately identified loopback HTTP timings",
+                  request_sha256=[digest(r) for r in requests], batch_size=batch_size,
+                  backends={}, comparisons=[])
     reference_rows = None
     if reference:
         saved = json.loads(Path(reference).read_text())
         if saved["model_benchmark"]["request_sha256"] != report["request_sha256"]:
             raise ValueError("reference benchmark request hashes differ")
+        if saved["model_benchmark"].get("batch_size") != batch_size:
+            raise ValueError("reference benchmark batch size differs or is unspecified")
         reference_rows = saved["model_benchmark"]["backends"]["torch"]
     for backend in backends:
         torch.cuda.reset_peak_memory_stats(device)
@@ -246,6 +340,9 @@ def model_benchmark(checkpoint, requests, backends, device, *, iterations, warmu
                     or reference_rows["provenance"]["max_length"] != predictor.provenance["max_length"]):
                 raise ValueError("reference checkpoint hash/context limit differs")
         outcomes = []
+        current = {"cold_model_load_checksum_compile_ms": load_ms, "resident_cuda_memory_after_load": loaded_memory,
+                   "provenance": predictor.provenance, "requests": outcomes}
+        report["backends"][backend] = current
         for index, (request, recs) in enumerate(zip(requests, records)):
             torch.cuda.reset_peak_memory_stats(device)
             cold, cold_ms = timed(lambda: predictor.predict(request), device)
@@ -278,15 +375,19 @@ def model_benchmark(checkpoint, requests, backends, device, *, iterations, warmu
                              "warm_samples_ms": times, **summarize(times, len(lengths), len(recs)),
                              "stability_passed": all(s["passed"] for s in stable),
                              "stability_checks": stable, "response": cold, "cuda_memory": memory(device)})
-        current = {"cold_model_load_checksum_compile_ms": load_ms, "resident_cuda_memory_after_load": loaded_memory,
-                   "provenance": predictor.provenance, "requests": outcomes}
-        report["backends"][backend] = current
+            if include_http:
+                reference_response = reference_rows["requests"][index]["response"] if backend != "torch" and reference_rows else cold
+                http_report = loopback_http_benchmark(
+                    predictor, request, device, iterations=iterations, warmup=warmup,
+                    reference_response=reference_response, tolerance=tolerance)
+                outcomes[-1]["loopback_http"] = http_report
         if backend == "torch":
             reference_rows = current
         del predictor
         gc.collect()
         torch.cuda.empty_cache()
-    all_stable = all(r["stability_passed"] for b in report["backends"].values() for r in b["requests"])
+    all_stable = all(r["stability_passed"] and r.get("loopback_http", {}).get("parity_passed", True)
+                     for b in report["backends"].values() for r in b["requests"])
     parity_ok = bool(report["comparisons"]) and all(c["passed"] for c in report["comparisons"])
     report["status"] = "passed" if all_stable and parity_ok else "baseline_only" if backends == ["torch"] else "parity_failed_or_missing_reference"
     report["notes"] = ["Models are loaded sequentially and released between backends; measurements are not interleaved across models.",
@@ -302,6 +403,9 @@ def main():
     parser.add_argument("--request", type=Path, action="append")
     parser.add_argument("--backend", choices=("all", "torch", "triton-tail", "fast-cuda"), default="all")
     parser.add_argument("--kernel-only", action="store_true")
+    parser.add_argument("--fixture-suite", action="store_true", help="Add seven original scaling/policy-boundary requests")
+    parser.add_argument("--http", action=argparse.BooleanOptionalAction, default=True,
+                        help="Measure local HTTP separately from in-process calls")
     parser.add_argument("--reference", type=Path, help="Previously recorded torch report with identical request/checkpoint hashes")
     parser.add_argument("--fused-final-head", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--device", default="cuda:0")
@@ -313,7 +417,7 @@ def main():
     args = parser.parse_args()
     if args.output.exists() or not 1 <= args.iterations <= 1000 or not 0 <= args.warmup <= 100:
         parser.error("output must be new; iterations 1-1000 and warmup 0-100")
-    if not args.kernel_only and (not args.checkpoint or not args.request):
+    if not args.kernel_only and (not args.checkpoint or not (args.request or args.fixture_suite)):
         parser.error("checkpoint benchmark requires --checkpoint and at least one --request")
     if not math.isfinite(args.max_probability_error) or not 0 <= args.max_probability_error <= 1:
         parser.error("probability tolerance must be finite and in [0, 1]")
@@ -333,12 +437,18 @@ def main():
             failed = report["kernel_benchmark"]["status"] != "passed"
         else:
             from jev.server import strict_json
-            requests = [strict_json(path.read_bytes()) for path in args.request]
+            requests = [strict_json(path.read_bytes()) for path in args.request or []]
+            if args.fixture_suite:
+                suite = independent_fixture_suite()
+                report["independent_fixture_suite"] = suite
+                requests.extend(w["request"] for w in suite)
             backends = ["torch", "triton-tail", "fast-cuda"] if args.backend == "all" else [args.backend]
-            report["model_benchmark"] = model_benchmark(
+            report["model_benchmark"] = {}
+            model_benchmark(
                 args.checkpoint, requests, backends, device, iterations=args.iterations,
                 warmup=args.warmup, tolerance=args.max_probability_error, batch_size=args.batch_size,
-                reference=args.reference, fused_final_head=args.fused_final_head)
+                reference=args.reference, fused_final_head=args.fused_final_head,
+                include_http=args.http, progress=report["model_benchmark"])
             failed = report["model_benchmark"]["status"] not in ("passed", "baseline_only")
     except Exception as error:
         report.update(status="failed", error_type=type(error).__name__, error=str(error))

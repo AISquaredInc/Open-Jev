@@ -4,9 +4,10 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
-from scripts.evaluate_support_routing import (UNKNOWN, finalize, fit_threshold, make_index,
-                                               measure, metrics, request_for, shortlist, write_csv)
+from scripts.evaluate_support_routing import (UNKNOWN, evaluate, finalize, fit_threshold, make_index,
+                                               measure, metrics, request_for, sha, shortlist, write_csv, write_json)
 
 
 class SupportRoutingTests(unittest.TestCase):
@@ -89,6 +90,45 @@ class SupportRoutingTests(unittest.TestCase):
             result = finalize(queue, self.index, output)
             self.assertEqual(result["human_reviewed"], 1)
             self.assertEqual(result["unresolved"], 0)
+
+    def test_test_gold_and_predictions_follow_calibration_lock_without_retuning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset, output = Path(tmp) / "data", Path(tmp) / "run"
+            dataset.mkdir()
+            write_json(dataset / "index.json", self.index)
+            for split, size in (("calibration", 3), ("test", 2)):
+                write_csv(dataset / f"{split}-inputs.csv", [{"id": f"{split}-{i}", "text": "card"} for i in range(size)], ["id", "text"])
+                write_json(dataset / f"{split}-gold.json", {f"{split}-{i}": "card_arrival" if split == "calibration" else "cash_withdrawal" for i in range(size)})
+            write_json(dataset / "manifest.json", {"majority_baseline_label": "card_arrival",
+                       "files_sha256": {p.name: sha(p.read_bytes()) for p in dataset.iterdir()}})
+            identity = {"model": "fixture-only", "checkpoint_sha256": "a" * 64}
+            test_measured = False
+            original_read = Path.read_text
+
+            def guarded_read(path, *args, **kwargs):
+                if path.name == "test-gold.json":
+                    self.assertTrue(test_measured)
+                    self.assertTrue((output / "decisions.lock.json").exists())
+                return original_read(path, *args, **kwargs)
+
+            def fake_measure(rows, index, endpoint, path, count):
+                nonlocal test_measured
+                if path.name == "test-predictions.jsonl":
+                    self.assertTrue((output / "decisions.lock.json").exists())
+                    test_measured = True
+                results = [{"id": row["id"], "text": row["text"], "success": True,
+                            "prediction": "card_arrival", "top_probability": .9,
+                            "candidate_labels": ["card_arrival", "cash_withdrawal"],
+                            "retrieval_prediction": "card_arrival", "wall_ms": 1} for row in rows]
+                path.write_text("".join(json.dumps(row) + "\n" for row in results))
+                return results, identity
+
+            with patch("scripts.evaluate_support_routing.measure", side_effect=fake_measure), patch.object(Path, "read_text", guarded_read):
+                result = evaluate(dataset, "fixture-only", output, candidates=2, minimum_accepted=3)
+            self.assertEqual(result["threshold"], 0)
+            self.assertEqual(result["calibration"]["error_among_accepted"], 0)
+            self.assertEqual(result["test"]["error_among_accepted"], 1)
+            self.assertEqual(result["test"]["coverage"], 1)
 
 
 if __name__ == "__main__":
