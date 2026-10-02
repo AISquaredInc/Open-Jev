@@ -23,7 +23,7 @@ python -m scripts.prepare_policy_training_v6 \
   --v4 data/frontier-controls-v4-20261002 \
   --v5 data/temporal-windows-v5-20261002-r1 \
   --v6 runs/openjev-hf-data-20261002/original-policy-v6-candidate \
-  --output data/policy-training-v6-20261002 \
+  --output data/policy-training-v6-20261002-r1 \
   --initial-checkpoint /path/on/training-host/released-2b/checkpoint \
   --training-output /path/on/training-host/policy-v6-adaptation
 ```
@@ -38,6 +38,17 @@ Group/input/entity checks run across all source splits before output creation.
 No Test, OOD, Calibration or Validation row is promoted into Train. A local
 freeze binds a committed SHA; the operator must push that same SHA before a
 future remote run. The preparation does not itself prove a push or execute one.
+
+The completed CPU [freeze receipt](../reports/openjev-hf-data-20261002/prepared-training/freeze-receipt.json)
+verifies pushed source `1ecbabb77d506d948dc7dd548f1cedb2f3f8f189`, all five
+mixture files, ten retained heldout files and zero Train/heldout group overlap.
+The public [manifest](../reports/openjev-hf-data-20261002/prepared-training/manifest.json)
+and [comparison plan](../reports/openjev-hf-data-20261002/prepared-training/comparison-plan.json)
+pin those exact bytes and settings. To recreate this exact manifest, run the
+preparation at that source commit with fresh output; later source commits
+intentionally produce a different source identity even when row bytes agree.
+The recorded training-host paths are staging targets, not existing validated
+model directories. No GPU training was launched by this freeze.
 
 `comparison-plan.json` records exact settings and a structured training argv
 for `python -m jev.train`: **692 steps × accumulation 4**, one full shuffled
