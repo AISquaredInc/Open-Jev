@@ -155,8 +155,8 @@ def memory(device):
 
 
 def sync(device):
-    import torch
     if device.type == "cuda":
+        import torch
         torch.cuda.synchronize(device)
 
 
