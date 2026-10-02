@@ -10,6 +10,7 @@ from jev.metrics import softmax
 from jev.train import source_checkout_commit
 from scripts.audit_temporal_windows_v5 import audit_directory, epoch_seconds
 from scripts import train_frontier_controls_v4 as core
+from scripts.temporal_pilot_lease import record_exit, register
 
 
 def directory_sha(path):
@@ -117,7 +118,7 @@ def read_journal(path):
     return [json.loads(line) for line in Path(path).read_text().splitlines()]
 
 
-def run(args):
+def run_registered(args):
     plan, initial, selected, selection, regression, audit = prepare(args)
     commit = source_checkout_commit(__file__)
     if commit != args.expected_commit:
@@ -169,9 +170,19 @@ def run(args):
         "limitation": "One fixed synthetic pilot; v4 regression rows were already development evidence; four temperature combinations isolate descriptive effects, not causal/generalization proof"})
 
 
+def run(args):
+    identity = register(args.lease, args.controller_stamp, args.gpu_uuid, args.expected_commit, args.output)
+    status = "failed"
+    try:
+        run_registered(args)
+        status = "complete"
+    finally:
+        record_exit(args.lease, args.controller_stamp, identity, status)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("checkpoint", "dataset", "regression-data", "regression-lock", "plan", "output", "expected-commit"):
+    for name in ("checkpoint", "dataset", "regression-data", "regression-lock", "plan", "output", "expected-commit", "lease", "controller-stamp", "gpu-uuid"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--device", default="cuda:0")
     args = parser.parse_args()

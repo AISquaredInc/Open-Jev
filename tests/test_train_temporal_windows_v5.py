@@ -1,6 +1,11 @@
+import json
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts.train_temporal_windows_v5 import four_combinations, noul_status, paired_decisions
+from scripts.temporal_pilot_lease import record_exit, register
 
 
 def row(key, logits, target):
@@ -9,6 +14,32 @@ def row(key, logits, target):
 
 
 class TemporalPilotTest(unittest.TestCase):
+    def test_lease_self_registration_and_controller_closing_preservation(self):
+        pilot = {"pid": 123, "start_ticks": 456, "uid": 1000}
+        controller = {"pid": 321, "start_ticks": 654, "uid": 1000}
+        with tempfile.TemporaryDirectory() as tmp:
+            lease = Path(tmp) / "gpu5-pilot-lease.json"
+            original = {"status": "available", "controller_stamp": "frozen", "controller_identity": controller,
+                        "gpu": 5, "gpu_uuid": "GPU-exact", "source_commit": "a" * 40,
+                        "maximum_runtime_seconds": 300, "task_directory": tmp}
+            lease.write_text(json.dumps(original))
+            with patch("scripts.temporal_pilot_lease.os.getpid", return_value=123), \
+                    patch("scripts.temporal_pilot_lease.os.getsid", return_value=123), \
+                    patch("scripts.temporal_pilot_lease.process_identity", side_effect=lambda pid: pilot if pid == 123 else controller), \
+                    patch.dict("os.environ", {"CUDA_VISIBLE_DEVICES": "GPU-exact"}):
+                self.assertEqual(register(lease, "frozen", "GPU-exact", "a" * 40, Path(tmp) / "run"), pilot)
+                running = json.loads(lease.read_text())
+                self.assertEqual(running["status"], "running")
+                self.assertEqual(running["controller_identity"], controller)
+                running["status"] = "closing"
+                lease.write_text(json.dumps(running))
+                record_exit(lease, "frozen", pilot, "complete")
+                closed = json.loads(lease.read_text())
+                self.assertEqual(closed["status"], "closing")
+                self.assertFalse(closed["session_cleanup_confirmed"])
+                with self.assertRaisesRegex(ValueError, "closing"):
+                    register(lease, "frozen", "GPU-exact", "a" * 40, Path(tmp) / "late")
+
     def test_temperature_ablation_keeps_argmax_but_changes_noul_threshold_behavior(self):
         before = [row("a", [0, 1], [0.0, 1.0]), row("b", [1, 0], [1.0, 0.0])]
         after = [row("a", [0, 2], [0.0, 1.0]), row("b", [2, 0], [1.0, 0.0])]
