@@ -53,8 +53,13 @@ Triton final-row RMSNorm/head kernel are available as experimental opt-ins. On
 H200, the isolated operator showed 2.63–2.75× warm P50 ratios. Released-2B
 whole-model ratios were only 1.006–1.020×, without established statistical
 significance; 336 reference comparisons had no decision or threshold flips.
-Both backends peaked at 6.917 GiB on the recorded workloads. The full 27B fast
-backbone remains unmeasured. [Results and implementation](docs/fast-backend.md).
+Both backends peaked at 6.917 GiB on the recorded workloads. A released-27B H100
+smoke executed all three backends: fast-CUDA failed the unchanged probability
+tolerance (0.00593 versus 0.0001). Full Torch/Triton-tail validation then
+passed 336 comparisons across eight workloads, with maximum probability error
+1.89e-6 and no decision or threshold flips. Whole-model P50 differences remained
+small (1.004–1.020×); statistical significance was not established.
+[Results and implementation](docs/fast-backend.md).
 
 **Natural support pilot:** the released 2B scored 166/256 (64.8%) versus BM25's
 211/256 (82.4%). The locked acceptance policy had 14 errors among 88 accepted
@@ -70,6 +75,12 @@ seven items. Numeric and timeline weaknesses remain. This pilot does not
 replace released models or establish a new leaderboard result.
 [Training evidence](docs/frontier-controls-v4.md) ·
 [Public-development protocol](docs/jevbench-open-development.md).
+
+A separate fixed temporal-window pilot raised synthetic Test from 15/32 to
+24/32 and OOD from 17/32 to 25/32, while worsening outside-window decisions
+and old-data regression controls. It is retained as diagnostic evidence and
+has not replaced the released checkpoint. [Full subgroup and temperature
+comparisons](docs/temporal-windows-v5.md).
 
 **Benchmarks:** [Results and scope](docs/benchmarks.md) ·
 [Website tables](https://zefan-cai.github.io/open-jev/benchmarks/) ·
@@ -368,6 +379,8 @@ python -m jev.train --model Qwen/Qwen3.5-2B \
 ```
 
 Training uses frozen source revisions, group-isolated splits, LoRA and a scalar decision head, soft cross-entropy + 0.1 Brier, and temperature fitted only on calibration data. The head starts from the pretrained Yes-minus-No readout. Each candidate is an independent sequence during training. Inference supports [request-local prefix caching](docs/prefix-caching.md): add `--prefix-cache` to prefill shared context/question tokens once, then branch only for candidate suffixes. Branches retain independent attention, convolution and recurrent states. The Open-Jev-2B BF16/CUDA comparison exceeded the probability tolerance on 9/11 workloads although all 440 paired selected decisions matched; caching remains experimental and off by default. Full 9B/27B comparisons remain pending. Large choices use bounded candidate batches and normalize only after all logits are reassembled.
+
+The [external OpenJev data audit](docs/openjev-hf-data.md) found no accessible training corpus and imported zero upstream rows. A separate [original policy candidate](docs/policy-controls-v6.md) provides 384 CC0 controls, including 240 Train rows. The [next training preparation](docs/policy-training-v6.md) freezes a 2768-row original mixture and supports initialization from the released 2B checkpoint; training and performance comparisons remain pending.
 
 The [four-card schedule](docs/four-gpu-handoff.md) and [early runtime evidence](reports/27b-ddp-n1/README.md) preserve historical training stages. The completed 27B v1.1 checkpoint is fixed at the predeclared 37,160-step stage; its full internal and public JevBench evaluations passed independent audits. Shared multi-GPU evaluation times are not single-GPU or HTTP/API latency measurements.
 

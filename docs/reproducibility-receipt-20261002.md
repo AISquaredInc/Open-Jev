@@ -164,6 +164,16 @@ checks on Python 3.10 and 3.14 are separately recorded in
 [`ci.json`](../reports/deployment-validation-20261002/ci.json).
 Neither record is a fresh Linux CUDA installation or released-model GPU load.
 
+A separate [fresh Linux venv installation](../reports/clean-linux-install-20261002/README.md)
+completed with the final wheel, Torch 2.8.0+cu128 and `train`/`fast` extras.
+All 77 installed distributions reside in the new venv. Dependency, CLI, CPU
+reference, packaged-resource and required FLA symbol checks passed. The
+attributed extension also compiled and loaded for explicit sm90 in 60.18
+seconds while CUDA devices were hidden; CUDA initialization remained false.
+The record binds public package archive hashes and a complete observed version
+lock. Python, OS, compiler, toolkit and pip download cache were reused. This is
+package-installation and compilation evidence; no model or GPU kernel executed.
+
 The [final portable checks](../reports/deployment-validation-20261002/final-portable-checks.json)
 record 859 discovered tests, 85 skipped and no failures, plus six passing
 workbench JavaScript tests. The 383,608-byte wheel includes the CUDA/Triton
@@ -183,8 +193,13 @@ Package projection hashes differ from original
 source-evaluated checkpoint hashes. Use the package manifest appropriate to
 the downloaded artifact rather than substituting a historical tree hash.
 
-Full 9B/27B checkpoint inference in this H200 efficiency experiment, the
-vendored tree CUDA backbone and fresh Linux CUDA installation remain pending.
+Full 9B/27B checkpoint inference in this H200 efficiency experiment remains
+pending. A separate [released-27B H100 smoke](../reports/efficiency-20261002/ms-27b-smoke.md)
+now verifies GPU execution of the reference, Triton-tail and vendored tree CUDA
+backends. Fast-CUDA failed probability parity. The subsequent
+[full safe-backend measurements](../reports/efficiency-20261002/ms-27b-safe-full-summary.md)
+passed eight workloads and 336 checks. Fresh Linux venv installation and
+compilation are verified separately above.
 
 The execution owner's bounded read-only probes on the measured H200 host
 timed out to Hugging Face HTTPS and the MS cache's SSH endpoint. The 27B base

@@ -49,7 +49,7 @@ a service requires your own authenticated HTTPS reverse proxy.
 | CPU, 2B | Replace `--device cuda:0` with `--device cpu` | Existing HF CPU workbench; substantially slower; start with short requests |
 | Apple Silicon, 2B | `JEV_TORCH_DTYPE=float32 python -m jev.server --checkpoint models/Open-Jev-2B/package/checkpoint --device mps --max-length 4096 --batch-size 1 --no-prefix-cache` | MPS support is opt-in; sufficient unified memory required; dtype changes are a separate numerical configuration |
 | One 16GB NVIDIA card, 9B | [Consumer GPU recipe](consumer-gpu.md#running-it-on-one-16-gb-card) | Community-tested RTX 4060 Ti / 5060 Ti with explicit placement and request-local cache; batch size 2; preserve author/configuration distinctions |
-| Larger NVIDIA host, 27B v1.1 | Download pin below, use `models/Open-Jev-27B-v1.1/package/checkpoint` | Published internal/public evaluation; current independent sealed result pending; sufficient BF16 base memory required |
+| NVIDIA H100 80GB, 27B v1.1 | Download pin below, use `models/Open-Jev-27B-v1.1/package/checkpoint` | Full PyTorch/Triton-tail validation passed eight workloads, peak request allocation 54.124 GiB; fast-CUDA failed probability parity; independent sealed evaluation remains pending |
 | Docker, 2B / CPU | `docker compose up -d --build` / `docker compose up -d --build open-jev-cpu` | Existing [Docker guide](../docker/README.md); build downloads and verifies package/base, runtime works offline |
 
 MPS does not support bitsandbytes 4/8-bit loading here. Leave
@@ -94,8 +94,18 @@ automates these pins and verifies the 27B checkpoint bytes before serving.
 The [runtime records](resources.md) and new deployment validation report
 separate clean base-wheel/API installation from optional Torch/model tests.
 A CPU HTTP fixture tests request/response plumbing, not trained model quality.
-Fresh Linux CUDA installation and full-size model execution need their own
-hardware evidence; package imports alone do not establish them.
+GPU kernel execution and full-size model runs need their own hardware evidence;
+package imports alone do not establish them.
+
+The separate [fresh Linux installation record](../reports/clean-linux-install-20261002/README.md)
+now verifies a new Python 3.11.15 venv with Torch 2.8.0+cu128 and both
+`train`/`fast` extras, including FLA 0.5.2. All 77 installed distributions stay
+inside the venv; CLI, CPU reference and dependency checks pass. The attributed
+extension compiled and loaded for sm90 with CUDA devices hidden and no CUDA
+initialization. Its [fully pinned observed dependency lock](../requirements-linux-py311-cu128-20261002.lock)
+and public archive origins are preserved. This installation used an existing
+Python interpreter and CUDA toolkit; it loaded no model weights and executed
+no GPU kernels. It is separate from the H200 runtime below.
 
 The [H200 released-2B report](../reports/efficiency-20261002/h200-2b-summary.md)
 records actual checkpoint inference, loopback HTTP and numerical parity. It used
@@ -106,3 +116,12 @@ command above preserves the tested server implementation. Record your resolved
 versions with `python -m pip freeze` and the source/package identities alongside
 each run. See the [reproducibility receipt](reproducibility-receipt-20261002.md)
 for installation and model-execution evidence kept separately.
+
+The separate [released-27B H100 smoke](../reports/efficiency-20261002/ms-27b-smoke.md)
+used the pinned 27B package and base weights with the fresh-Linux version family.
+It executed PyTorch, Triton-tail and fast-CUDA. Fast-CUDA failed the unchanged
+probability tolerance; keep the reference backend for deployment. This single
+request validates execution. The [complete safe-backend comparison](../reports/efficiency-20261002/ms-27b-safe-full-summary.md)
+subsequently passed 336 checks across eight workloads. Its small sequential
+latency differences do not establish a statistically significant speedup or
+general model quality improvement.
