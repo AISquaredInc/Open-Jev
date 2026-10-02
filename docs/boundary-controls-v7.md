@@ -92,9 +92,11 @@ end-to-end campaign.
 
 ## Required next experiment and gates
 
-**Do not launch yet:** the v7 same-runtime comparison runner, its protocol
-and current GPU ownership/restoration still need verification. The CPU package
-does not acquire a GPU, fit a temperature, make predictions or publish weights.
+The separate same-runtime runner, training observer and independent CPU replay
+are described in the [controlled run protocol](boundary-v7-run-protocol.md).
+Launch still requires their committed checks and current GPU ownership/restoration
+proof. The CPU package does not acquire a GPU, fit a temperature, make
+predictions or publish weights.
 
 Before any launch, bind the exact source/data/checkpoint identities and fixed
 final checkpoint. Recompute published/final logits in one runtime, then apply
