@@ -65,9 +65,9 @@ reports. Neither full tree-backbone nor training-memory savings were measured.
 - [Test source manifest](https://github.com/Zefan-Cai/Open-Jev/blob/4898a2923cecb2fd62b25b5cde8d64741d9cfe2e/reports/efficiency-20261002/h200-kernel-test-source-manifest.json)
 - [Test output](https://github.com/Zefan-Cai/Open-Jev/blob/4898a2923cecb2fd62b25b5cde8d64741d9cfe2e/reports/efficiency-20261002/h200-kernel-tests-ed28.txt)
 - [Machine-readable receipt](../reports/efficiency-20261002/reproducibility-receipt.json)
-- [Released 2B model and HTTP summary](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/efficiency-20261002/h200-2b-summary.md)
-- [Torch reference model report](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/efficiency-20261002/h200-2b-torch-ed28.json)
-- [Triton-tail model report](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/efficiency-20261002/h200-2b-triton-tail-ed28.json)
+- [Released 2B model and HTTP summary](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-summary.md)
+- [Torch reference model report](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-torch-ed28.json)
+- [Triton-tail model report](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-triton-tail-ed28.json)
 - [Implementation PR #14](https://github.com/Zefan-Cai/Open-Jev/pull/14)
 
 The source digest is
@@ -84,7 +84,7 @@ the Triton-tail report's digest is
 
 ## Natural support application
 
-The [support aggregate and calibration lock](https://github.com/Zefan-Cai/Open-Jev/tree/codex/open-jev-efficiency-20261002/reports/support-routing-20261002)
+The [support aggregate and calibration lock](https://github.com/Zefan-Cai/Open-Jev/tree/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/support-routing-20261002)
 bind the released 2B package hash, base revision, saved temperature, code
 `80ca8e81d08992cb2a4cbb6a0caa1355ad3e5aee` and 4,096-token limit.
 The calibration policy was locked on 96 reserved official-train utterances
@@ -117,8 +117,8 @@ Open-Jev model. All four 128-row journals and their family/kind metrics were
 recomputed without model weights; the 64-row calibration temperature and
 three reload comparisons also matched the locked records.
 
-The [training summary](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/frontier-controls-v4/continued-2b-20261002/summary.json)
-and [completion receipt](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/frontier-controls-v4/continued-2b-20261002/completion-receipt.json)
+The [training summary](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/frontier-controls-v4/continued-2b-20261002/summary.json)
+and [completion receipt](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/frontier-controls-v4/continued-2b-20261002/completion-receipt.json)
 retain the fixed run, selection, calibration, predictions and reload evidence.
 The training runner's checkpoint file-map digest is
 `27aebbcb24cccc4d55ad410c8a006cfdb52e023443a555ce0bbbf23491245a73`;
@@ -133,7 +133,7 @@ improvement claim.
 
 ## Frozen public-development comparison
 
-The [public-development summary and bound execution receipt](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/jevbench-public-development-20261002/summary.md)
+The [public-development summary and bound execution receipt](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/summary.md)
 compares the released and experimental 2B checkpoints on the same 64 locked
 requests. Choice stayed **17/34**, and Noul stayed **9/23** under the documented
 inclusive 0.2/0.8 abstention rule. Noul answered coverage changed from 17/23

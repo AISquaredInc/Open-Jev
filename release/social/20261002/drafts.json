@@ -10,7 +10,7 @@
   },
   {
     "milestone": "deployment",
-    "text": "Open-Jev deployment now pins source, checkpoints and runtime versions, with a hardware table, fresh wheel/API checks and actual 2B H200 inference. Clean Linux CUDA installation remains unverified. https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/docs/deployment.md",
+    "text": "Open-Jev deployment now pins source, checkpoints and runtime versions, with a hardware table, fresh wheel/API checks and actual 2B H200 inference. Clean Linux CUDA installation remains unverified. https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/deployment.md",
     "x_weighted_length_approx": 220,
     "status": "ready_not_published",
     "published_url": null,
@@ -19,7 +19,7 @@
   },
   {
     "milestone": "acceleration-validation",
-    "text": "Original H200 final-row kernel: 2.63–2.75x P50 ratio. Released 2B whole-model ratio: 1.006–1.020x, not statistically established. 336 parity checks: zero decision/threshold flips. Full 27B fast-CUDA remains untested. https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/efficiency-20261002/h200-2b-summary.md",
+    "text": "Original H200 final-row kernel: 2.63–2.75x P50 ratio. Released 2B whole-model ratio: 1.006–1.020x, not statistically established. 336 parity checks: zero decision/threshold flips. Full 27B fast-CUDA remains untested. https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-summary.md",
     "x_weighted_length_approx": 240,
     "status": "ready_not_published",
     "published_url": null,
@@ -28,7 +28,7 @@
   },
   {
     "milestone": "synthetic-pilot",
-    "text": "Fixed 64-step Open-Jev-2B adaptation: synthetic test 65.6%→77.3%, OOD 64.8%→74.2%. On public JevBench64, Choice/Noul accuracy stayed flat; Score MAE 0.22393→0.20645 (7 items). Numeric/timeline weaknesses remain. https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/docs/frontier-controls-v4.md",
+    "text": "Fixed 64-step Open-Jev-2B adaptation: synthetic test 65.6%→77.3%, OOD 64.8%→74.2%. On public JevBench64, Choice/Noul accuracy stayed flat; Score MAE 0.22393→0.20645 (7 items). Numeric/timeline weaknesses remain. https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/frontier-controls-v4.md",
     "x_weighted_length_approx": 238,
     "status": "ready_not_published",
     "published_url": null,
@@ -37,7 +37,7 @@
   },
   {
     "milestone": "natural-support-routing",
-    "text": "A negative Open-Jev result: released 2B routed 166/256 BANKING77 test cases correctly (64.8%) vs BM25 211/256 (82.4%). The calibration-locked policy had 14/88 accepted errors. Keep human review; no test retuning. https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/docs/support-routing.md",
+    "text": "A negative Open-Jev result: released 2B routed 166/256 BANKING77 test cases correctly (64.8%) vs BM25 211/256 (82.4%). The calibration-locked policy had 14/88 accepted errors. Keep human review; no test retuning. https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/support-routing.md",
     "x_weighted_length_approx": 236,
     "status": "ready_not_published",
     "published_url": null,
@@ -46,7 +46,7 @@
   },
   {
     "milestone": "actual-model-review-workflow",
-    "text": "Open-Jev support workflow now reaches real model responses and CSV export. The browser smoke used 12 natural training utterances; all unresolved reviews stayed unresolved. External human trials: 0. Local trial and evidence: https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/docs/support-routing.md",
+    "text": "Open-Jev support workflow now reaches real model responses and CSV export. The browser smoke used 12 natural training utterances; all unresolved reviews stayed unresolved. External human trials: 0. Local trial and evidence: https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/support-routing.md",
     "x_weighted_length_approx": 247,
     "status": "ready_not_published",
     "published_url": null,
@@ -55,7 +55,7 @@
   },
   {
     "milestone": "five-community-references",
-    "text": "Five verified community X reports shaped our support-routing experiment and evaluation policy. They describe TypeSafe Jev, not Open-Jev customers. Exact excerpts, attribution and source hashes: https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/docs/community-evidence.md",
+    "text": "Five verified community X reports shaped our support-routing experiment and evaluation policy. They describe TypeSafe Jev, not Open-Jev customers. Exact excerpts, attribution and source hashes: https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/community-evidence.md",
     "x_weighted_length_approx": 217,
     "status": "ready_not_published",
     "published_url": null,

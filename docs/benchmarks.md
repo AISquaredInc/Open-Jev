@@ -46,7 +46,7 @@ it was not a fresh clean Linux installation. See the
 
 Sources: [measured operator report](https://github.com/Zefan-Cai/Open-Jev/blob/4898a2923cecb2fd62b25b5cde8d64741d9cfe2e/reports/efficiency-20261002/h200-kernel-summary.md),
 [raw measurements](https://github.com/Zefan-Cai/Open-Jev/blob/4898a2923cecb2fd62b25b5cde8d64741d9cfe2e/reports/efficiency-20261002/h200-kernel-results-ed28.json).
-The [released 2B report](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/efficiency-20261002/h200-2b-summary.md)
+The [released 2B report](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-summary.md)
 retains all workloads, cold calls, allocator figures and both raw JSON reports.
 [Implementation PR #14](https://github.com/Zefan-Cai/Open-Jev/pull/14) tracks the changes.
 
@@ -66,8 +66,8 @@ Saved/reloaded probability error was zero. Training source was `80ca8e8`.
 These synthetic results do not establish natural-support or JevBench transfer;
 the separate public-development comparison below retains its limited scope.
 
-Sources: [full training summary](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/frontier-controls-v4/continued-2b-20261002/summary.json),
-[completion and checkpoint receipt](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/frontier-controls-v4/continued-2b-20261002/completion-receipt.json).
+Sources: [full training summary](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/frontier-controls-v4/continued-2b-20261002/summary.json),
+[completion and checkpoint receipt](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/frontier-controls-v4/continued-2b-20261002/completion-receipt.json).
 The nonweight artifacts retain all four prediction journals and their locks.
 
 ### Frozen 64-task public-development comparison
@@ -91,10 +91,10 @@ published-open items. Historical public feedback informed the controls. These
 subset metrics are not official I_open, blind/sealed performance, a leaderboard
 composite or a rank. Raw benchmark text, gold and responses remain private.
 
-Sources: [released baseline](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/jevbench-public-development-20261002/released-2b-frozen64.json),
-[experimental pilot](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/jevbench-public-development-20261002/pilot-2b-frozen64.json),
-[paired comparison](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/jevbench-public-development-20261002/pilot-vs-released-frozen64.json),
-[per-item transition aggregates](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/jevbench-public-development-20261002/paired-frozen64.json).
+Sources: [released baseline](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/released-2b-frozen64.json),
+[experimental pilot](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/pilot-2b-frozen64.json),
+[paired comparison](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/pilot-vs-released-frozen64.json),
+[per-item transition aggregates](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/jevbench-public-development-20261002/paired-frozen64.json).
 
 ## Community evidence and a local support trial
 
@@ -119,8 +119,8 @@ not retuned on test. Browser automation exercised 12 natural training examples
 against the real checkpoint API, with all 12 left unresolved for review and
 zero human corrections. This engineering check is not an external human trial.
 
-Sources: [natural support evaluation and lock](https://github.com/Zefan-Cai/Open-Jev/tree/codex/open-jev-efficiency-20261002/reports/support-routing-20261002),
-[actual-model browser smoke](https://github.com/Zefan-Cai/Open-Jev/blob/codex/open-jev-efficiency-20261002/reports/support-routing-20261002/browser-smoke.json).
+Sources: [natural support evaluation and lock](https://github.com/Zefan-Cai/Open-Jev/tree/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/support-routing-20261002),
+[actual-model browser smoke](https://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/support-routing-20261002/browser-smoke.json).
 The model ranker needs improvement before it can replace the stronger retrieval baseline.
 
 ## Full internal evaluation
