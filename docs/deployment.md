@@ -94,8 +94,18 @@ automates these pins and verifies the 27B checkpoint bytes before serving.
 The [runtime records](resources.md) and new deployment validation report
 separate clean base-wheel/API installation from optional Torch/model tests.
 A CPU HTTP fixture tests request/response plumbing, not trained model quality.
-Fresh Linux CUDA installation and full-size model execution need their own
-hardware evidence; package imports alone do not establish them.
+GPU kernel execution and full-size model runs need their own hardware evidence;
+package imports alone do not establish them.
+
+The separate [fresh Linux installation record](../reports/clean-linux-install-20261002/README.md)
+now verifies a new Python 3.11.15 venv with Torch 2.8.0+cu128 and both
+`train`/`fast` extras, including FLA 0.5.2. All 77 installed distributions stay
+inside the venv; CLI, CPU reference and dependency checks pass. The attributed
+extension compiled and loaded for sm90 with CUDA devices hidden and no CUDA
+initialization. Its [fully pinned observed dependency lock](../requirements-linux-py311-cu128-20261002.lock)
+and public archive origins are preserved. This installation used an existing
+Python interpreter and CUDA toolkit; it loaded no model weights and executed
+no GPU kernels. It is separate from the H200 runtime below.
 
 The [H200 released-2B report](../reports/efficiency-20261002/h200-2b-summary.md)
 records actual checkpoint inference, loopback HTTP and numerical parity. It used

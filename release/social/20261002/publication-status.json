@@ -2,12 +2,17 @@
   "schema_version": 1,
   "account": "Zefan_Cai",
   "user_authorized": true,
-  "ready_drafts": 7,
-  "published_in_this_campaign": 0,
-  "published_urls": [],
+  "ready_drafts": 6,
+  "published_in_this_campaign": 1,
+  "published_urls": [
+    "https://x.com/Zefan_Cai/status/2106095771909328920"
+  ],
   "last_browser_check_utc": "2026-10-02T18:15:51Z",
   "browser_result": "Codex auth token is unavailable",
-  "status": "blocked_by_connector_authentication",
+  "status": "partially_published_via_computer_use",
   "automatic_approval_rejection": false,
-  "evidence_commit": "42e46481da6dd8191d6f510fc3680c70fd4f051d"
+  "evidence_commit": "42e46481da6dd8191d6f510fc3680c70fd4f051d",
+  "computer_use_method": "Chrome Computer Use",
+  "last_computer_use_check_utc": "2026-10-02T19:01:52.346055+00:00",
+  "pending_ui_condition": "User is also operating Chrome; read current state before further actions"
 }
