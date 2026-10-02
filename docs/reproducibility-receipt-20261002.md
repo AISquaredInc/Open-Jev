@@ -193,9 +193,11 @@ Package projection hashes differ from original
 source-evaluated checkpoint hashes. Use the package manifest appropriate to
 the downloaded artifact rather than substituting a historical tree hash.
 
-Full 9B/27B checkpoint inference in this H200 efficiency experiment and GPU
-execution of the vendored tree CUDA backbone remain pending. Fresh Linux venv
-package installation and compilation are separately verified above.
+Full 9B/27B checkpoint inference in this H200 efficiency experiment remains
+pending. A separate [released-27B H100 smoke](../reports/efficiency-20261002/ms-27b-smoke.md)
+now verifies GPU execution of the reference, Triton-tail and vendored tree CUDA
+backends. Fast-CUDA failed probability parity; full safe-backend measurements
+remain pending. Fresh Linux venv installation and compilation are verified above.
 
 The execution owner's bounded read-only probes on the measured H200 host
 timed out to Hugging Face HTTPS and the MS cache's SSH endpoint. The 27B base

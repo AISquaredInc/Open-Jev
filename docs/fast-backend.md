@@ -126,5 +126,15 @@ run; those small differences do not establish statistical significance.
 
 See the [operator report](../reports/efficiency-20261002/h200-kernel-summary.md)
 and [released 2B report](../reports/efficiency-20261002/h200-2b-summary.md) for
-P50/P95, memory, exact source/runtime hashes and workload limits. Full 9B/27B
-checkpoint inference and the vendored tree CUDA backbone remain unmeasured.
+P50/P95, memory, exact source/runtime hashes and workload limits. Full 9B
+checkpoint inference remains unmeasured in this experiment.
+
+## Released 27B H100 smoke
+
+The [released-27B smoke report](../reports/efficiency-20261002/ms-27b-smoke.md)
+records real checkpoint inference and loopback HTTP for all three backends.
+Triton-tail passed the single request with maximum probability error 2.82e-8.
+Fast-CUDA failed the unchanged 1e-4 tolerance with error 0.00593, despite no
+decision or threshold flips on that request. The complete three-backend run was
+therefore skipped. Single sequential latency samples are diagnostic, and do not
+establish a usable speedup. Complete safe-backend measurements remain pending.

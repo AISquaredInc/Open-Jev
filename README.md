@@ -53,8 +53,11 @@ Triton final-row RMSNorm/head kernel are available as experimental opt-ins. On
 H200, the isolated operator showed 2.63–2.75× warm P50 ratios. Released-2B
 whole-model ratios were only 1.006–1.020×, without established statistical
 significance; 336 reference comparisons had no decision or threshold flips.
-Both backends peaked at 6.917 GiB on the recorded workloads. The full 27B fast
-backbone remains unmeasured. [Results and implementation](docs/fast-backend.md).
+Both backends peaked at 6.917 GiB on the recorded workloads. A released-27B H100
+smoke executed all three backends: fast-CUDA failed the unchanged probability
+tolerance (0.00593 versus 0.0001), while Triton-tail passed that request.
+Complete safe-backend measurements remain pending.
+[Results and implementation](docs/fast-backend.md).
 
 **Natural support pilot:** the released 2B scored 166/256 (64.8%) versus BM25's
 211/256 (82.4%). The locked acceptance policy had 14 errors among 88 accepted

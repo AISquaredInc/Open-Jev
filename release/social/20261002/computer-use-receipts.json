@@ -6,5 +6,37 @@
     "published_at_utc": "2026-10-02T18:56:01.471Z",
     "confirmation": "Your post was sent; matching own timeline text and status URL",
     "method": "Chrome Computer Use"
+  },
+  {
+    "milestone": "acceleration-validation",
+    "url": "https://x.com/Zefan_Cai/status/2106100391268294786",
+    "text": "⚡ Open-Jev kernel: 2.63–2.75× faster on H200.\n\nOne final-row operator. Whole-model 2B gain: ~1–2%, with significance unproven.\n\n✅ 336 parity checks\n✅ Zero decision/threshold flips\n\n27B fast-CUDA is next. Data 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/reports/efficiency-20261002/h200-2b-summary.md",
+    "confirmed_at_utc": "2026-10-02T19:18:35.535Z",
+    "confirmation": "Matching exact own-timeline text and status URL; blank lines visible",
+    "method": "Chrome Computer Use"
+  },
+  {
+    "milestone": "deployment",
+    "url": "https://x.com/Zefan_Cai/status/2106101664814157999",
+    "text": "🚀 Open-Jev now has a fresh Linux install record.\n\n📌 77 packages in an isolated venv\n✅ CLI + CPU reference + sm90 compile checks\n\nCode, weights and versions are pinned. GPU inference is a separate validation.\n\nQuickstart 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/25b63e5e41dd0f79b46806e999aa124c51322989/docs/deployment.md",
+    "published_at_utc": "2026-10-02T19:19:38.831Z",
+    "confirmation": "Your post was sent; matching own timeline text and status URL",
+    "method": "Chrome Computer Use"
+  },
+  {
+    "milestone": "synthetic-pilot",
+    "url": "https://x.com/Zefan_Cai/status/2106102257389535279",
+    "text": "🧪 A 64-step Open-Jev-2B pilot:\n\nSynthetic test: 65.6% → 77.3%\nControlled OOD: 64.8% → 74.2%\n\nPublic JevBench64: Choice/Noul stayed flat. Score MAE improved on 7 items.\n\nNumeric/time failures remain. Full results 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/frontier-controls-v4.md",
+    "confirmation": "Matching exact own-timeline text and status URL; blank lines visible",
+    "method": "Chrome Computer Use",
+    "confirmed_at_utc": "2026-10-02T19:25:07.218Z"
+  },
+  {
+    "milestone": "natural-support-routing",
+    "url": "https://x.com/Zefan_Cai/status/2106103438472102120",
+    "text": "🏦 We tested Open-Jev-2B on natural BANKING77 requests.\n\nAccuracy: 64.8%\nBM25 baseline: 82.4%\n\nCalibration-locked policy: 14 errors among 88 accepted cases. Human review stays essential.\n\nNegative results count too. Data 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/support-routing.md",
+    "confirmation": "Matching exact own-timeline text and status URL; blank lines visible",
+    "method": "Chrome Computer Use",
+    "confirmed_at_utc": "2026-10-02T19:28:45.162Z"
   }
 ]
