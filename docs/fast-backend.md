@@ -77,10 +77,14 @@ CUDA_VISIBLE_DEVICES=0 python -m scripts.benchmark_efficiency --kernel-only \
   --device cuda:0 --iterations 100 --warmup 10 --output kernel-results.json
 
 CUDA_VISIBLE_DEVICES=0 python -m scripts.benchmark_efficiency \
-  --checkpoint /path/to/package/checkpoint --request configs/example-request.json \
+  --checkpoint /path/to/package/checkpoint --request configs/example-request.json --fixture-suite \
   --backend all --device cuda:0 --iterations 20 --warmup 3 \
   --output model-results.json
 ```
+
+`--fixture-suite` adds seven original deterministic short/medium/long mixed-type
+and policy-boundary requests. Policy values straddle 0.2/0.8; the report measures
+actual model probability margins without assuming the model is near those values.
 
 `--backend all` requires the 27B profile. For other profiles, first measure
 `--backend torch --output reference.json`, then measure
@@ -91,9 +95,13 @@ contexts, small/large candidate sets and real application inputs.
 Reports contain model/checkpoint, request, source and environment hashes; cold
 load/checksum/compile time; first observed request latency; warm P50/P95;
 requests/decisions/candidates per second; allocator resident/peak VRAM; input
-sizes; maximum probability error; decision changes; threshold crossings; and
-boundary margins. End-to-end here means the Predictor path including tokenization
-and response formatting, excluding HTTP and network transport. Device-used
+sizes; maximum probability error; decision changes; threshold crossings including
+official Noul thresholds 0.2/0.8; and boundary margins. In-process latency covers
+the Predictor path including tokenization and response formatting. Loopback HTTP
+latency is measured and labeled separately on an already warmed model, with a
+fresh TCP connection per request and concurrency one. It includes local sockets
+and JSON serialization; it is not comparable to a third-party WAN API latency.
+Use `--no-http` to omit that measurement. Device-used
 memory also includes the CUDA context and any other process on that GPU.
 
 Parity requires matching question/candidate IDs and ordering, usage, finite

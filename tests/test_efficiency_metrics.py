@@ -2,8 +2,10 @@
 import copy
 import math
 import unittest
+from types import SimpleNamespace
 
-from scripts.benchmark_efficiency import compare_responses, independent_fixture_suite, percentile, summarize
+from scripts.benchmark_efficiency import (compare_responses, independent_fixture_suite,
+                                          loopback_http_benchmark, percentile, summarize)
 
 
 def choice(a=.6, b=.4):
@@ -55,6 +57,23 @@ class EfficiencyMetricsTest(unittest.TestCase):
         self.assertEqual({r["kind"] for r in compiled[0]}, {"choice", "noul", "score"})
         self.assertGreater(len(first[2]["request"]["state"]["audit_trail"]),
                            len(first[1]["request"]["state"]["audit_trail"]))
+
+    def test_loopback_http_audits_real_transport_and_separates_scope(self):
+        from jev.serving import Predictor
+
+        class FixtureScorer:
+            def score(self, records):
+                return [[0.0, 1.0] for _ in records], 100
+
+        predictor = Predictor(FixtureScorer(), model_name="fixture", method="fixture")
+        request = {"state": "fixture", "questions": {
+            "route": {"type": "choice", "instructions": "Select a route.", "criteria": {"a": "First", "b": "Second"}}}}
+        expected = predictor.predict(request)
+        report = loopback_http_benchmark(predictor, request, SimpleNamespace(type="cpu"),
+                                          iterations=2, warmup=0, reference_response=expected, tolerance=1e-4)
+        self.assertTrue(report["parity_passed"])
+        self.assertEqual(len(report["warm_samples_ms"]), 2)
+        self.assertIn("loopback HTTP", report["scope"])
 
     def test_missing_reordered_and_nonfinite_probabilities_fail(self):
         b = copy.deepcopy(choice())

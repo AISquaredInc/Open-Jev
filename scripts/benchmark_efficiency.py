@@ -12,6 +12,7 @@ import http.client
 import importlib.metadata
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import statistics
@@ -121,6 +122,17 @@ def environment(device):
                     gpu_total_bytes=props.total_memory,
                     tf32_matmul=torch.backends.cuda.matmul.allow_tf32,
                     tf32_cudnn=torch.backends.cudnn.allow_tf32)
+        try:
+            info["cuda_driver"] = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+                text=True, timeout=10).splitlines()[0].strip()
+        except (OSError, subprocess.SubprocessError, IndexError):
+            info["cuda_driver"] = None
+        nvcc = str(Path(os.environ["CUDA_HOME"]) / "bin/nvcc") if os.environ.get("CUDA_HOME") else "nvcc"
+        try:
+            info["cuda_compiler"] = subprocess.check_output([nvcc, "--version"], text=True, timeout=10).strip()
+        except (OSError, subprocess.SubprocessError):
+            info["cuda_compiler"] = None
     try:
         info["git_commit"] = subprocess.check_output(
             ["git", "-C", str(Path(__file__).resolve().parents[1]), "rev-parse", "HEAD"], text=True).strip()
