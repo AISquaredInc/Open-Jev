@@ -54,5 +54,12 @@
     }
   ],
   "sample64_exact_prefix_of_128": true,
-  "adapter_sha256": "2a8c5c35fb68aef194c192f762aeaa93436c855ad50a671f6728d9ab3f97b6b9"
+  "adapter_sha256": "2a8c5c35fb68aef194c192f762aeaa93436c855ad50a671f6728d9ab3f97b6b9",
+  "actual_loopback_fixture": {
+    "report": "loopback-fixture.json",
+    "successful_requests": 64,
+    "replayed_requests": 64,
+    "fixture_only": true,
+    "model_weights_loaded": false
+  }
 }
