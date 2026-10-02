@@ -10,13 +10,13 @@
   },
   {
     "milestone": "deployment",
-    "text": "🚀 Open-Jev now has a fresh Linux install record.\n\n📌 77 packages in an isolated venv\n✅ CLI + CPU reference + sm90 compile checks\n\nCode, weights and versions are pinned. GPU inference is a separate validation.\n\nQuickstart 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/deployment.md",
+    "text": "🚀 Open-Jev now has a fresh Linux install record.\n\n📌 77 packages in an isolated venv\n✅ CLI + CPU reference + sm90 compile checks\n\nCode, weights and versions are pinned. GPU inference is a separate validation.\n\nQuickstart 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/25b63e5e41dd0f79b46806e999aa124c51322989/docs/deployment.md",
     "x_weighted_length_approx": 248,
     "status": "ready_not_published",
     "published_url": null,
     "publication_blocker": null,
     "evidence": "docs/deployment.md",
-    "evidence_commit_update_required": true
+    "evidence_commit": "25b63e5e41dd0f79b46806e999aa124c51322989"
   },
   {
     "milestone": "acceleration-validation",
