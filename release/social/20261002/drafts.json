@@ -1,0 +1,38 @@
+[
+  {
+    "milestone": "evaluation-ledger",
+    "text": "Open-Jev now separates historical public scores, independent JevBench versions and pending 27B evaluation. v1.5.4 competence is not raw accuracy. Frozen sources and evaluator handoff: https://zefan-cai.github.io/open-jev/benchmarks/",
+    "x_weighted_length_approx": 207,
+    "status": "ready_not_published",
+    "published_url": null,
+    "publication_blocker": "Codex browser connection returns: Codex auth token is unavailable",
+    "requires_claim_scope": "Implementation/preparation only; no unmeasured speedup, training gain, customer or completed human trial"
+  },
+  {
+    "milestone": "deployment",
+    "text": "Open-Jev deployment now has pinned trained checkpoints, a GPU/CPU/MPS matrix and fresh-environment wheel/API checks. GPU runtime measurements are still pending. Reproduction guide: https://github.com/Zefan-Cai/Open-Jev/blob/d6a1859/docs/deployment.md",
+    "x_weighted_length_approx": 204,
+    "status": "ready_not_published",
+    "published_url": null,
+    "publication_blocker": "Codex browser connection returns: Codex auth token is unavailable",
+    "requires_claim_scope": "Implementation/preparation only; no unmeasured speedup, training gain, customer or completed human trial"
+  },
+  {
+    "milestone": "experimental-kernels",
+    "text": "Integrated open-jev-fast with MIT attribution, layer-wise weight ownership transfer and an original Triton final-row RMSNorm+decision-head fusion. Experimental: GPU speed/memory/parity are not yet measured. https://github.com/Zefan-Cai/Open-Jev/tree/codex/open-jev-efficiency-20261002",
+    "x_weighted_length_approx": 230,
+    "status": "ready_not_published",
+    "published_url": null,
+    "publication_blocker": "Codex browser connection returns: Codex auth token is unavailable",
+    "requires_claim_scope": "Implementation/preparation only; no unmeasured speedup, training gain, customer or completed human trial"
+  },
+  {
+    "milestone": "synthetic-controls",
+    "text": "Old public JevBench exposed temporal/numeric and long-policy weaknesses. We added 3,360 independent controls in whole counterfactual groups, plus a released-checkpoint adaptation runner. Training results pending. https://github.com/Zefan-Cai/Open-Jev/blob/1c43478/docs/frontier-controls-v4.md",
+    "x_weighted_length_approx": 236,
+    "status": "ready_not_published",
+    "published_url": null,
+    "publication_blocker": "Codex browser connection returns: Codex auth token is unavailable",
+    "requires_claim_scope": "Implementation/preparation only; no unmeasured speedup, training gain, customer or completed human trial"
+  }
+]

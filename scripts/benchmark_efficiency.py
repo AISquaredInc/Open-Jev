@@ -277,7 +277,8 @@ def kernel_benchmark(device, *, iterations=50, warmup=5, tolerance=1e-4):
             generator = torch.Generator(device=device).manual_seed(20261002)
             hidden = torch.randn(candidates * state_tokens, hidden_size, generator=generator,
                                  device=device, dtype=torch.bfloat16)
-            delta = torch.randn_like(hidden) * .25
+            delta = torch.randn(hidden.shape, generator=generator, device=device,
+                                dtype=hidden.dtype) * .25
             rows = torch.arange(candidates, device=device) * state_tokens + state_tokens - 1
             norm = torch.randn(hidden_size, generator=generator, device=device) * .01
             head = torch.randn(1, hidden_size, generator=generator, device=device) * .003
