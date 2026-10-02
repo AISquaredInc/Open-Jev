@@ -138,3 +138,11 @@ Fast-CUDA failed the unchanged 1e-4 tolerance with error 0.00593, despite no
 decision or threshold flips on that request. The complete three-backend run was
 therefore skipped. Single sequential latency samples are diagnostic, and do not
 establish a usable speedup. Complete safe-backend measurements remain pending.
+
+The adapter currently merges BF16 LoRA weights before constructing the fast
+projection bundles; the reference loader retains PEFT's separate low-rank
+forward path. Those operations have different rounding graphs. The smoke
+cannot identify how much of the error comes from merging versus the custom
+backbone kernels. A future diagnostic should compare an explicit merged-Torch
+reference first, then isolate the same-version FLA and SDPA paths before changing
+individual kernels. The probability gate stays unchanged throughout.

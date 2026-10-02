@@ -38,5 +38,21 @@
     "confirmation": "Matching exact own-timeline text and status URL; blank lines visible",
     "method": "Chrome Computer Use",
     "confirmed_at_utc": "2026-10-02T19:28:45.162Z"
+  },
+  {
+    "milestone": "actual-model-review-workflow",
+    "url": "https://x.com/Zefan_Cai/status/2106105158518386881",
+    "text": "🛠️ Open-Jev support workflow: input → real model → review → CSV.\n\nBrowser smoke: 12 natural training utterances. Unresolved reviews stayed unresolved.\n\nExternal human trials: 0. Try the local workflow 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/support-routing.md",
+    "confirmed_at_utc": "2026-10-02T19:40:45.021Z",
+    "confirmation": "Matching exact own-timeline text and status URL; blank lines visible. Delayed UI confirmation checked before retry; no duplicate sent.",
+    "method": "Chrome Computer Use"
+  },
+  {
+    "milestone": "five-community-references",
+    "url": "https://x.com/Zefan_Cai/status/2106107313602089164",
+    "text": "🔎 Five real community reports helped shape our Open-Jev experiments.\n\nSupport routing, code checks, retrieval and file selection.\n\nThey describe TypeSafe Jev; they are not Open-Jev customer stories.\n\nExact quotes + sources 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/community-evidence.md",
+    "confirmed_at_utc": "2026-10-02T19:43:29.218Z",
+    "confirmation": "Your post was sent; matching own-timeline text and status URL, with blank lines.",
+    "method": "Chrome Computer Use"
   }
 ]

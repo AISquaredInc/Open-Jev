@@ -75,26 +75,37 @@ coverage. The raw original CC0 data stays in the ignored `data/` directory
 and can be rebuilt from the pinned source and settings. No public benchmark
 question, scenario, answer, or sealed material enters either implementation.
 
-## Next evaluation decision
+## Fixed pilot and next evaluation decision
 
-No model has trained on or been evaluated against this preparation. It carries
-no accuracy or JevBench improvement claim. The original numeric balance
-controls also lack negative/zero balances and ledger-order variation; v5 does
-not fix that separate gap.
+One predeclared 64-step pilot completed on MS N1-1 GPU5 in 185.15 seconds,
+starting from the exact released 2B package. It consumed 256 examples by cycling
+128 distinct original training rows, with 32 separate calibration rows. The
+[raw report and independent CPU replay](../reports/temporal-windows-v5-20261002/ms-2b-fixed-pilot/README.md)
+retain both weight states at both temperatures, all subgroup results, the
+original v4 regression rows and process-cleanup receipts.
 
-Before the next pilot, predeclare a fixed training schedule and a separately
-frozen comparison with the released checkpoint, retaining unaffected families
-as regression controls. Fit temperature only on calibration, use validation
-for any development choices, and keep the new test/OOD independent of those
-choices. Report Choice accuracy, Noul coverage/error under the intended
-thresholds, and performance by boundary and offset representation. Account
-for calibration changes separately when interpreting probability metrics.
-Treat the already-inspected frozen public64 sample as development feedback;
-it cannot become a new blind test. Production code should continue to compute
-exact dates and amounts directly.
+V5 test argmax accuracy rose from 15/32 to 24/32 and controlled OOD from 17/32
+to 25/32. These aggregate gains hide worse exclusion-boundary decisions:
+before-delivery and after-deadline rows together fell from 2/8 to 0/8 on test
+and from 5/8 to 1/8 on OOD. Interior, inclusive boundaries and exceptions
+improved. The original v4 regression test fell from 86/128 to 83/128 and OOD
+from 83/128 to 81/128 in this runtime. The checkpoint is diagnostic evidence;
+it has not replaced any released weights and does not solve temporal comparison.
+
+All twelve outside-window Choice rows in the saved test/OOD journals selected
+`accept` after adaptation, although their gold action was `reject`. Further
+development should investigate that approval pattern before defining another
+independent original control set or training schedule.
+The new test/OOD rows are now observed development evidence, not reusable
+blind tests. Calibration must still be fitted only on calibration, with
+weight and temperature effects reported separately. The original numeric
+controls also lack negative/zero balances and ledger-order variation; v5 did
+not address that gap. Production code should compute exact dates and amounts
+directly. There is no official JevBench or natural-request improvement claim.
 
 The [predeclared pilot plan](../reports/temporal-windows-v5-20261002/pilot-plan.json)
-freezes one 64-step adaptation from the released 2B, 128 training rows, 32
+froze one 64-step adaptation from the released 2B, 128 training rows, 32
 calibration rows and 32 each Test/OOD, before model evaluation. It also requires
 the earlier frozen v4 groups as regression controls and both weight states at
-both temperatures. A completed plan alone is not a measured model result.
+both temperatures before any v5 model evaluation. No checkpoint, schedule,
+temperature threshold or test/OOD selection was retuned after the result.

@@ -74,6 +74,12 @@ replace released models or establish a new leaderboard result.
 [Training evidence](docs/frontier-controls-v4.md) ·
 [Public-development protocol](docs/jevbench-open-development.md).
 
+A separate fixed temporal-window pilot raised synthetic Test from 15/32 to
+24/32 and OOD from 17/32 to 25/32, while worsening outside-window decisions
+and old-data regression controls. It is retained as diagnostic evidence and
+has not replaced the released checkpoint. [Full subgroup and temperature
+comparisons](docs/temporal-windows-v5.md).
+
 **Benchmarks:** [Results and scope](docs/benchmarks.md) ·
 [Website tables](https://zefan-cai.github.io/open-jev/benchmarks/) ·
 [Source code](https://github.com/Zefan-Cai/Open-Jev)

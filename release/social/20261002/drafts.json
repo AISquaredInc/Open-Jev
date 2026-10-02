@@ -49,8 +49,8 @@
     "milestone": "actual-model-review-workflow",
     "text": "🛠️ Open-Jev support workflow: input → real model → review → CSV.\n\nBrowser smoke: 12 natural training utterances. Unresolved reviews stayed unresolved.\n\nExternal human trials: 0. Try the local workflow 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/support-routing.md",
     "x_weighted_length_approx": 228,
-    "status": "ready_not_published",
-    "published_url": null,
+    "status": "published",
+    "published_url": "https://x.com/Zefan_Cai/status/2106105158518386881",
     "publication_blocker": null,
     "evidence": "reports/support-routing-20261002/browser-smoke.json"
   },
@@ -58,8 +58,8 @@
     "milestone": "five-community-references",
     "text": "🔎 Five real community reports helped shape our Open-Jev experiments.\n\nSupport routing, code checks, retrieval and file selection.\n\nThey describe TypeSafe Jev; they are not Open-Jev customer stories.\n\nExact quotes + sources 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/42e46481da6dd8191d6f510fc3680c70fd4f051d/docs/community-evidence.md",
     "x_weighted_length_approx": 250,
-    "status": "ready_not_published",
-    "published_url": null,
+    "status": "published",
+    "published_url": "https://x.com/Zefan_Cai/status/2106107313602089164",
     "publication_blocker": null,
     "evidence": "docs/community-evidence.md"
   }
