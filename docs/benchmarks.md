@@ -4,6 +4,19 @@ This index consolidates completed measurements from the published reports. Each 
 
 [Project website](https://zefan-cai.github.io/open-jev/) · [Website benchmark tables](https://zefan-cai.github.io/open-jev/benchmarks/) · [Hugging Face collection](https://huggingface.co/collections/ZefanCai/open-jev)
 
+## Versioned independent results
+
+The [evaluation ledger](evaluation-ledger.md) preserves the old 231-public
+protocol, historical v1.4 report, and observed independent v1.5.4 snapshot.
+v1.4 used different public/sealed difficulty mixtures; v1.5 uses matched tier
+mixtures and chance-corrected competence. Neither its competence nor its
+composite is raw accuracy. On v1.5.4, 9B is #46 / 24.356 and 2B #65 / 9.073.
+The old v1.4 29.9% sealed figure is a historical report, not current 9B performance.
+
+Fresh independent 27B v1.1 evaluation remains pending. The [executable handoff](../scripts/prepare_independent_evaluation.py)
+pins code, model/base/checkpoint identity and request settings without claiming
+new sealed results. See the [machine-readable snapshot](../site/evaluation-ledger.json).
+
 ## Full internal evaluation
 
 | Model | Old Test | Old OOD | Expanded Test | Expanded OOD |

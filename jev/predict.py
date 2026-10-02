@@ -17,10 +17,22 @@ def main():
     p.add_argument("--output")
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--device", default="cuda:0")
+    p.add_argument("--backend", choices=("torch", "triton-tail", "fast-cuda"), default="torch")
+    p.add_argument("--fused-final-head", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--prefix-cache", action=argparse.BooleanOptionalAction, default=False,
                    help="Enable token-prefix reuse; default off pending full-checkpoint BF16 validation")
     args = p.parse_args()
     request = json.loads(Path(args.request).read_text())
+    if args.backend != "torch":
+        from .serving import load_predictor
+        predictor = load_predictor(checkpoint=args.checkpoint, device=args.device,
+                                   batch_size=args.batch_size, prefix_cache=args.prefix_cache,
+                                   backend=args.backend, fused_final_head=args.fused_final_head)
+        rendered = json.dumps(predictor.predict(request), ensure_ascii=False, indent=2)
+        if args.output:
+            Path(args.output).write_text(rendered + "\n")
+        print(rendered)
+        return
     records = compile_request(request["state"], request["questions"])
     checkpoint = Path(args.checkpoint)
     temperature = json.loads((checkpoint / "temperature.json").read_text())["temperature"]

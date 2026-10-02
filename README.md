@@ -40,6 +40,14 @@ controlled single-variable experiment.
 
 **No-code workbench:** [User guide](docs/get-started.md) · [Workbench source](examples/workbench/) · [CPU deployment](deploy/huggingface-space/). Paste messages or import a CSV, define your categories, and download the original table with suggested labels and candidate probabilities. The hosted workbench uses the released Open-Jev-2B model on CPU. Start with a few rows: this trial is slower than the GPU deployment measured below. Its optional walkthrough is explicitly marked as an illustrative example.
 
+**Evaluation versions:** [Public, independent and pending results](docs/evaluation-ledger.md).
+The historical 231-public result remains separate from JevBench v1.4 and the
+v1.5.4 independent snapshot. On v1.5.4, 9B is #46 / 24.356 and 2B #65 / 9.073;
+its chance-corrected competence is not raw accuracy. Fresh independent 27B v1.1
+results remain pending. [Prepare the pinned evaluator handoff](scripts/prepare_independent_evaluation.py).
+
+**Deployment:** [Trained-model quickstart and GPU / CPU / MPS matrix](docs/deployment.md).
+
 **Benchmarks:** [Results and scope](docs/benchmarks.md) ·
 [Website tables](https://zefan-cai.github.io/open-jev/benchmarks/) ·
 [Source code](https://github.com/Zefan-Cai/Open-Jev)
@@ -134,9 +142,12 @@ reasoning settings and structured categorical outputs.
 
 ## Try it
 
-Python 3.10+; model inference requires the training dependencies and a suitable GPU.
-The GPU workflow and full test suite target Linux. The [N1 runtime record](docs/resources.md)
-lists observed package versions and the remaining clean-install verification work.
+Start with the **released trained 2B model**. Python 3.10+, the inference
+runtime and sufficient NVIDIA GPU memory are required. The `train` dependency
+extra also supplies inference dependencies; installation does not train a model.
+[Deployment guide](docs/deployment.md) covers CPU, Apple Silicon MPS, Docker,
+16GB 9B and the pinned 27B release. [Runtime records](docs/resources.md)
+separate fresh base-package/API checks from pending hardware validation.
 
 ```bash
 git clone https://github.com/Zefan-Cai/Open-Jev.git
@@ -144,26 +155,34 @@ cd Open-Jev
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[train]'
-python -m unittest discover -s tests -v
-
-# Start from the pinned upstream model; no Open-Jev checkpoint is required.
-python -m jev.server --model Qwen/Qwen3.5-2B \
-  --revision 15852e8c16360a2fea060d615a32b45270f8a8fc --max-length 4096
+hf download ZefanCai/Open-Jev-2B \
+  --revision 0c7aa498b1627be8da4acf34c863ff0ee0a92785 \
+  --local-dir models/Open-Jev-2B
+python -m jev.server --checkpoint models/Open-Jev-2B/package/checkpoint \
+  --device cuda:0 --max-length 4096 --batch-size 1 --no-prefix-cache
 ```
 
-Open **http://127.0.0.1:8791** for the text/CSV workbench, **http://127.0.0.1:8791/examples/index.html** for the developer task lab, or **http://127.0.0.1:8791/examples/painting/index.html** for probability painting. Run from the checkout to include the example UI. The server binds to loopback by default and loads a real model; it does not substitute synthetic answers when inference fails.
-
-Keep the server running. Run the client and service checks in another terminal
-from the same checkout, with `source .venv/bin/activate`.
-
-Trained 2B/9B adapters are published at the links above. Download a model
-package or use a completed trained run, then replace the base-model launch
-above with the following command and its final `checkpoint/` directory. A training-resume
-snapshot is not an inference checkpoint.
+The package contains the trained LoRA, scalar head and calibration. The loader
+fetches its pinned Qwen base weights separately on first use. Keep the server
+running; in another terminal from this checkout, check readiness and send an
+actual request:
 
 ```bash
-python -m jev.server --checkpoint /path/to/run/checkpoint --max-length 4096
+curl --fail http://127.0.0.1:8791/health
+curl --fail http://127.0.0.1:8791/v1/systemone \
+  -H 'Content-Type: application/json' --data-binary @configs/example-request.json
 ```
+
+Open **http://127.0.0.1:8791/** for the text/CSV workbench,
+**http://127.0.0.1:8791/examples/index.html** for the developer lab, or
+**http://127.0.0.1:8791/examples/painting/index.html** for probability painting.
+The server binds to loopback and returns real model results; failures remain
+errors. Request probabilities do not establish production accuracy.
+
+For a separately identified untrained base baseline, use `--model
+Qwen/Qwen3.5-2B --revision 15852e8c16360a2fea060d615a32b45270f8a8fc`
+in place of `--checkpoint`. This is a different inference identity from the
+released trained model. A training-resume snapshot is not an inference package.
 
 ```python
 from jev.client import Client

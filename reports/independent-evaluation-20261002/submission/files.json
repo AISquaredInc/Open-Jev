@@ -1,0 +1,8 @@
+{
+  "submission.json": "c079f801a2403a4cd99788c0939e31a2f8d7235ccbceb9537ed029f41f24a44a",
+  "identity.json": "07ccfb823070d8fa632ad813cd8acdd40c3d0975394ae04965adb226d6ad7b7f",
+  "README.md": "44ccf14e97376a1b2839429a5c620452e3f81f56e8631be34a8cafcdd37ab616",
+  "install-and-serve.sh": "249ca09188ab03ddbd78f0147d8aaef2d57aac9372443f810732935fd2816cd9",
+  "reproduce-public.sh": "dc5a7729512211a56f3c0181c4ad85cf794f5400d543fc5a1b90965d6fbf0b42",
+  "verify_and_record.py": "07fbd52780d5fdf57dede002b7c106a738435ef62eb211dd64ee9e1cc43bd5b6"
+}

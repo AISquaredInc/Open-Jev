@@ -1,0 +1,12 @@
+test_interpolated_percentiles_and_throughput (test_efficiency_metrics.EfficiencyMetricsTest.test_interpolated_percentiles_and_throughput) ... ok
+test_missing_reordered_and_nonfinite_probabilities_fail (test_efficiency_metrics.EfficiencyMetricsTest.test_missing_reordered_and_nonfinite_probabilities_fail) ... ok
+test_noul_equal_boundary_uses_true_at_half (test_efficiency_metrics.EfficiencyMetricsTest.test_noul_equal_boundary_uses_true_at_half) ... ok
+test_small_error_without_crossing_passes (test_efficiency_metrics.EfficiencyMetricsTest.test_small_error_without_crossing_passes) ... ok
+test_tiny_coverage_boundary_flip_is_reported (test_efficiency_metrics.EfficiencyMetricsTest.test_tiny_coverage_boundary_flip_is_reported) ... ok
+test_tiny_probability_error_still_fails_decision_boundary (test_efficiency_metrics.EfficiencyMetricsTest.test_tiny_probability_error_still_fails_decision_boundary) ... ok
+test_usage_mismatch_fails_parity (test_efficiency_metrics.EfficiencyMetricsTest.test_usage_mismatch_fails_parity) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.001s
+
+OK
