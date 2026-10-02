@@ -82,5 +82,15 @@
     "publication_blocker": null,
     "evidence": "reports/efficiency-20261002/ms-27b-safe-full-summary.md",
     "evidence_commit": "97059fd74dfd1ce0d9e9fb8207d76894432339f1"
+  },
+  {
+    "milestone": "hf-data-audit-v6",
+    "text": "🧬 Open-Jev: preparing the next training set.\n\n384 original policy controls (240 train), checked with a separate oracle.\n\nZero upstream rows imported after auditing openjev/openjev.\n\n2,768-row mix frozen; training pending.\n\nData + audit 👇\nhttps://github.com/Zefan-Cai/Open-Jev/blob/97ed8893a9a3e0bdf636eeeb231f551318086cd4/docs/openjev-hf-data.md",
+    "x_weighted_length_approx": 263,
+    "status": "published",
+    "published_url": "https://x.com/Zefan_Cai/status/2106113771026670045",
+    "publication_blocker": null,
+    "evidence": "docs/openjev-hf-data.md",
+    "evidence_commit": "97ed8893a9a3e0bdf636eeeb231f551318086cd4"
   }
 ]
