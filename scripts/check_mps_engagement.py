@@ -150,12 +150,14 @@ def main():
         "all_parameters_on_mps": not off_device,
         "metal_memory_allocated": allocated > 0,
         "no_cpu_fallback_warnings": not fallbacks,
+        "profiler_child_succeeded": (report["profile"]["exit_code"] == 0 if "profile" in report else None),
         "profiler_logged_no_cpu_fallback": report.get("profile", {}).get("no_cpu_fallback_logged"),
         "gpu_utilization_rose_while_scoring": (None if idle_median is None or busy_median is None
                                                else busy_median > idle_median),
     }
     passed = (report["checks"]["all_parameters_on_mps"] and report["checks"]["metal_memory_allocated"]
               and report["checks"]["no_cpu_fallback_warnings"]
+              and report["checks"]["profiler_child_succeeded"] is not False
               and report["checks"]["profiler_logged_no_cpu_fallback"] is not False)
     report["status"] = "passed" if passed else "failed"
     rendered = json.dumps(report, indent=2)

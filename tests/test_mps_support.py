@@ -7,10 +7,13 @@ reference: float32 within the existing CPU parity bar, bfloat16 and float16 no
 further from a float32 reference than CPU at the same dtype is. They skip on
 machines without an MPS backend. The profiling regression runs everywhere.
 """
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 import warnings
 from unittest.mock import patch
@@ -59,6 +62,29 @@ class ProfileSynchronizationTest(unittest.TestCase):
             _, stats = tiny_model().score_cached(records(), batch_size=2)
         self.assertIn("shared_prefill", stats["profile_seconds"])
 
+    def test_meta_embedding_profile_synchronizes_actual_accelerator_devices(self):
+        # A supported CPU-offloaded embedding is reported as meta even when
+        # the transformer blocks and head reside on accelerators.
+        model, rows = tiny_model(), records()
+        expected = score(model, rows)
+        core = model.backbone.get_base_model()
+        model._cpu_embed = core.embed_tokens.weight.detach().clone()
+        core.embed_tokens = torch.nn.Embedding(257, 32, device="meta")
+        model.device_name = "meta"
+        # Run the real offload scoring path on CPU while emulating two CUDA
+        # parameter devices; queue synchronization itself needs no CUDA hardware.
+        devices = [SimpleNamespace(device=torch.device(name))
+                   for name in ("meta", "cuda:1", "cuda:2")]
+        with patch.dict(os.environ, {"JEV_PROFILE": "1"}), \
+             patch.object(model, "parameters", side_effect=lambda: iter(devices)), \
+             patch("torch.cuda.synchronize") as accelerator:
+            actual, stats = model.score_cached(rows, batch_size=2)
+        self.assertEqual({call.args[0] for call in accelerator.call_args_list},
+                         {torch.device("cuda:1"), torch.device("cuda:2")})
+        self.assertIn("shared_prefill", stats["profile_seconds"])
+        for left, right in zip(actual, expected):
+            torch.testing.assert_close(left, right, atol=2e-5, rtol=2e-5)
+
 
 class ProfiledChildEnvironmentTest(unittest.TestCase):
     def test_profiled_child_loads_weights_on_one_thread(self):
@@ -70,6 +96,40 @@ class ProfiledChildEnvironmentTest(unittest.TestCase):
         self.assertEqual(environment["HF_DEACTIVATE_ASYNC_LOAD"], "1")
         self.assertEqual(environment["PYTORCH_MPS_LOG_PROFILE_INFO"], str(PROFILE_LOG_OPTIONS))
         self.assertEqual(environment["HF_HUB_OFFLINE"], "1")
+
+    @unittest.skipUnless(HAS_RUNTIME, "requires optional torch/transformers/peft train runtime")
+    def test_engagement_requires_successful_profiler_child(self):
+        from scripts import check_mps_engagement as engagement
+        parameter = SimpleNamespace(device=SimpleNamespace(type="mps"))
+        model = SimpleNamespace(named_parameters=lambda: [("weight", parameter)],
+                                parameters=lambda: iter([parameter]))
+        predictor = SimpleNamespace(scorer=SimpleNamespace(model=model), provenance={})
+        for returncode, log, passed in ((0, "There are no CPU Fallbacks logged", True),
+                                        (1, "There are no CPU Fallbacks logged", False),
+                                        (-11, "There are no CPU Fallbacks logged", False),
+                                        (0, "CPU Fallback statistics unavailable", False)):
+            with self.subTest(returncode=returncode, log=log), tempfile.TemporaryDirectory() as directory:
+                request = Path(directory) / "request.json"
+                request.write_text("{}")
+                child = SimpleNamespace(returncode=returncode, stdout=log, stderr="")
+                with patch("sys.argv", ["check_mps_engagement", "--checkpoint", directory,
+                                        "--request", str(request), "--profile-log", str(Path(directory) / "profile.log")]), \
+                     patch.dict(os.environ, {"PYTORCH_ENABLE_MPS_FALLBACK": "0"}), \
+                     patch("torch.backends.mps.is_available", return_value=True), \
+                     patch("torch.mps.synchronize"), \
+                     patch("torch.mps.current_allocated_memory", return_value=1024), \
+                     patch("torch.mps.driver_allocated_memory", return_value=2048), \
+                     patch("jev.serving.load_predictor", return_value=predictor), \
+                     patch.object(engagement, "score_loop", return_value=[1.0]), \
+                     patch.object(engagement, "utilization", return_value=10), \
+                     patch.object(engagement, "sysctl", return_value="Apple fixture"), \
+                     patch.object(engagement.time, "sleep"), \
+                     patch.object(engagement.subprocess, "run", return_value=child), \
+                     contextlib.redirect_stdout(io.StringIO()) as output:
+                    exit_code = engagement.main()
+                report = json.loads(output.getvalue())
+                self.assertEqual(exit_code, 0 if passed else 1)
+                self.assertEqual(report["status"], "passed" if passed else "failed")
 
 
 @unittest.skipUnless(HAS_RUNTIME, "requires optional torch/transformers/peft train runtime")

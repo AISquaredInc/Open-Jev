@@ -190,15 +190,19 @@ def score_cached(model, records, *, batch_size=32):
     # Off by default and never changes what is computed.
     _prof = os.environ.get("JEV_PROFILE") == "1"
     _timing = collections.defaultdict(float)
+    # The input embedding may be CPU-offloaded (reported as meta) while the
+    # blocks and head reside on accelerators, possibly on multiple CUDA cards.
+    _profile_devices = ({p.device for p in model.parameters() if p.device.type in ("cuda", "mps")}
+                        if _prof else ())
 
     def _sync():
         # Accelerator work is queued asynchronously, so a phase timing is only
-        # meaningful after the queue drains. CPU and meta have nothing to drain.
-        kind = torch.device(str(model.device_name)).type
-        if kind == "cuda":
-            torch.cuda.synchronize()
-        elif kind == "mps":
-            torch.mps.synchronize()
+        # meaningful after every participating device's queue drains.
+        for device in _profile_devices:
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+            else:
+                torch.mps.synchronize()
 
     def _mark(bucket, start):
         if _prof:
