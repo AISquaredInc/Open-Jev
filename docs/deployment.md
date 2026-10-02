@@ -49,7 +49,7 @@ a service requires your own authenticated HTTPS reverse proxy.
 | CPU, 2B | Replace `--device cuda:0` with `--device cpu` | Existing HF CPU workbench; substantially slower; start with short requests |
 | Apple Silicon, 2B | `JEV_TORCH_DTYPE=float32 python -m jev.server --checkpoint models/Open-Jev-2B/package/checkpoint --device mps --max-length 4096 --batch-size 1 --no-prefix-cache` | MPS support is opt-in; sufficient unified memory required; dtype changes are a separate numerical configuration |
 | One 16GB NVIDIA card, 9B | [Consumer GPU recipe](consumer-gpu.md#running-it-on-one-16-gb-card) | Community-tested RTX 4060 Ti / 5060 Ti with explicit placement and request-local cache; batch size 2; preserve author/configuration distinctions |
-| NVIDIA H100 80GB, 27B v1.1 | Download pin below, use `models/Open-Jev-27B-v1.1/package/checkpoint` | Real PyTorch/Triton-tail/fast-CUDA smoke completed; fast-CUDA failed probability parity; complete efficiency measurements and independent sealed evaluation remain pending |
+| NVIDIA H100 80GB, 27B v1.1 | Download pin below, use `models/Open-Jev-27B-v1.1/package/checkpoint` | Full PyTorch/Triton-tail validation passed eight workloads, peak request allocation 54.124 GiB; fast-CUDA failed probability parity; independent sealed evaluation remains pending |
 | Docker, 2B / CPU | `docker compose up -d --build` / `docker compose up -d --build open-jev-cpu` | Existing [Docker guide](../docker/README.md); build downloads and verifies package/base, runtime works offline |
 
 MPS does not support bitsandbytes 4/8-bit loading here. Leave
@@ -121,4 +121,7 @@ The separate [released-27B H100 smoke](../reports/efficiency-20261002/ms-27b-smo
 used the pinned 27B package and base weights with the fresh-Linux version family.
 It executed PyTorch, Triton-tail and fast-CUDA. Fast-CUDA failed the unchanged
 probability tolerance; keep the reference backend for deployment. This single
-request validates execution, not general model quality or complete efficiency.
+request validates execution. The [complete safe-backend comparison](../reports/efficiency-20261002/ms-27b-safe-full-summary.md)
+subsequently passed 336 checks across eight workloads. Its small sequential
+latency differences do not establish a statistically significant speedup or
+general model quality improvement.

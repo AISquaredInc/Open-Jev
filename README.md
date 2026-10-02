@@ -55,8 +55,10 @@ whole-model ratios were only 1.006–1.020×, without established statistical
 significance; 336 reference comparisons had no decision or threshold flips.
 Both backends peaked at 6.917 GiB on the recorded workloads. A released-27B H100
 smoke executed all three backends: fast-CUDA failed the unchanged probability
-tolerance (0.00593 versus 0.0001), while Triton-tail passed that request.
-Complete safe-backend measurements remain pending.
+tolerance (0.00593 versus 0.0001). Full Torch/Triton-tail validation then
+passed 336 comparisons across eight workloads, with maximum probability error
+1.89e-6 and no decision or threshold flips. Whole-model P50 differences remained
+small (1.004–1.020×); statistical significance was not established.
 [Results and implementation](docs/fast-backend.md).
 
 **Natural support pilot:** the released 2B scored 166/256 (64.8%) versus BM25's

@@ -137,7 +137,14 @@ Triton-tail passed the single request with maximum probability error 2.82e-8.
 Fast-CUDA failed the unchanged 1e-4 tolerance with error 0.00593, despite no
 decision or threshold flips on that request. The complete three-backend run was
 therefore skipped. Single sequential latency samples are diagnostic, and do not
-establish a usable speedup. Complete safe-backend measurements remain pending.
+establish a usable speedup.
+
+The subsequent [safe full comparison](../reports/efficiency-20261002/ms-27b-safe-full-summary.md)
+passed 168 in-process and 168 loopback HTTP checks across eight workloads, with
+maximum probability error 1.89e-6 and no decision or audited threshold flips.
+Warm P50 ratios were 1.004–1.020× in-process and 1.002–1.029× over loopback HTTP.
+Both paths peaked at 54.124 GiB of request allocation. Sequential runs and a
+short concurrent 2B pilot on another GPU prevent a significant speedup claim.
 
 The adapter currently merges BF16 LoRA weights before constructing the fast
 projection bundles; the reference loader retains PEFT's separate low-rank
