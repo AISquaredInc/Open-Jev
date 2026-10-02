@@ -69,10 +69,63 @@ hashes are kept in the prediction journals. The threshold is an empirical
 calibration selection, not a statistical guarantee. With 256 test rows,
 accepted-error estimates may remain uncertain.
 
-Import the measured `decisions.lock.json` into the browser before routing its
-queue. A lock from another model is rejected. All measurements in a claim
+Import a measured `decisions.lock.json` into the browser only after its held-out
+results meet the intended acceptance policy. A lock from another model is rejected. All measurements in a claim
 must name the actual checkpoint size; offline fixture tests are not model
 performance.
+
+## Measured 2B pilot, October 2, 2026
+
+The released Open-Jev-2B checkpoint was measured on one H200 using the Torch
+backend, BF16 backbone and its released temperature 1.518796342858676. Code
+commit `80ca8e81d08992cb2a4cbb6a0caa1355ad3e5aee`, checkpoint hash
+`3076462e6356412082e79af909227b39b2863b90def79155ca0821aa506b7ded`, and
+pinned base revision `15852e8c16360a2fea060d615a32b45270f8a8fc` are recorded
+in the [raw summary](../reports/support-routing-20261002/summary.json).
+
+| Measure | Calibration, 96 rows | Frozen test, 256 rows |
+| --- | ---: | ---: |
+| Model routing accuracy | 60/96, 62.5% | 166/256, 64.8% |
+| BM25 retrieval top-1 accuracy | 79/96, 82.3% | 211/256, 82.4% |
+| Gold intent in candidate set | 93/96, 96.9% | 249/256, 97.3% |
+| Accepted coverage | 31/96, 32.3% | 88/256, 34.4% |
+| Errors among accepted | 3/31, 9.7% | 14/88, 15.9% |
+| Manual-review demand | 65/96, 67.7% | 168/256, 65.6% |
+| Failed requests | 0 | 0 |
+
+The calibration-only threshold was 0.7581042723393133 and remained unchanged
+on test. Test HTTP wall time was 21.06 seconds in total. The model performed
+worse than the lexical retrieval baseline, and the held-out accepted accuracy
+of 84.1% missed the intended 90% target. Keep the browser's default review mode;
+this checkpoint is not ready to automate this routing task under that policy.
+The measured lock is retained as evidence, rather than adjusted using test.
+These results apply to this 2B routing pilot, not the 9B or 27B checkpoints.
+
+The frozen policy would accept 88 test rows and send 168 for manual review.
+Fourteen of those 88 accepted predictions disagree with the benchmark labels.
+Those are measured routing errors, not observed customer rework. No human
+review was completed in this campaign: the saved reviewer and correction
+fields are empty. Review demand does not measure completed work or saved
+staff time, and this pilot has no production users or banking actions.
+
+## Browser workflow verification
+
+The [genuine browser capture](../reports/support-routing-20261002/browser-demo.png)
+and [smoke receipt](../reports/support-routing-20261002/browser-smoke.json)
+record 12 real released-2B model calls on the natural official-training demo
+utterances, with no page errors. No confidence lock was imported; all 12
+proposals entered the review queue. The
+[exported final CSV](../reports/support-routing-20261002/demo-final-unresolved.csv)
+keeps all 12 unresolved with no human label or reviewer. This demonstrates
+model inference, queueing and export; it is not test accuracy or completed
+human review.
+
+The browser used a local page and an SSH bridge to the real model API, so UI
+elapsed time includes transport overhead and is not inference latency. The
+receipt pins the tested UI at source commit `80ca8e81d08992cb2a4cbb6a0caa1355ad3e5aee`.
+The genuine screenshot retains the heading shown during that run; the current
+page subsequently changed only that heading to “Review each proposed support
+decision.” Both UI hashes and the limited wording change are recorded.
 
 ## Finish human review
 

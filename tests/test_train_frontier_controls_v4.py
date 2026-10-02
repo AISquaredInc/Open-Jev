@@ -87,6 +87,12 @@ class ContinuedTrainingTest(unittest.TestCase):
             (path / "temperature.json").write_text('{"temperature": 0.8}')
             first = checkpoint_identity(path)
             self.assertEqual(first["temperature"], 0.8)
+            config = json.loads((path / "model.json").read_text())
+            for revision in (None, "main", "g" * 40):
+                (path / "model.json").write_text(json.dumps({**config, "revision": revision}))
+                with self.assertRaisesRegex(ValueError, "pinned 40-character base revision"):
+                    checkpoint_identity(path)
+            (path / "model.json").write_text(json.dumps(config))
             (path / "head.pt").write_bytes(b"changed")
             self.assertNotEqual(first["sha256"], checkpoint_identity(path)["sha256"])
             (path / "temperature.json").write_text('{"temperature": 0}')

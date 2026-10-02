@@ -11,6 +11,12 @@ The [2026-10-02 deployment validation](../reports/deployment-validation-20261002
 records fresh base-wheel/API checks without loading model weights. It does
 not claim fresh Linux CUDA, full-size MPS or trained GPU inference validation.
 
+Separate [H200 released-2B measurements](../reports/efficiency-20261002/h200-2b-summary.md)
+now record actual model inference, HTTP and parity, with the pinned checkpoint,
+verified base files and runtime versions. They reused a read-only runtime with
+an isolated package overlay. The [reproducibility receipt](reproducibility-receipt-20261002.md)
+distinguishes these measurements from the clean base-package checks.
+
 ## Archived operational records
 
 # 集群与模型运行环境

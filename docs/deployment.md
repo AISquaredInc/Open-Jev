@@ -14,8 +14,10 @@ supplies inference dependencies; installing it does not start training.
 ```bash
 git clone https://github.com/Zefan-Cai/Open-Jev.git
 cd Open-Jev
-python3 -m venv .venv
+git checkout 80ca8e81d08992cb2a4cbb6a0caa1355ad3e5aee
+python3.12 -m venv .venv
 source .venv/bin/activate
+python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cu128
 python -m pip install -e '.[train]'
 hf download ZefanCai/Open-Jev-2B \
   --revision 0c7aa498b1627be8da4acf34c863ff0ee0a92785 \
@@ -43,7 +45,7 @@ a service requires your own authenticated HTTPS reverse proxy.
 
 | Target | Released package / command | Evidence and limits |
 |---|---|---|
-| Linux NVIDIA, 2B | Command above | Historical H100 inference/evaluation; no universal minimum VRAM claim |
+| Linux NVIDIA, 2B | Command above | Actual H200 reference/tail run: maximum allocator peak 6.917 GiB on the recorded batch-32 workloads; leave headroom for your context and CUDA runtime |
 | CPU, 2B | Replace `--device cuda:0` with `--device cpu` | Existing HF CPU workbench; substantially slower; start with short requests |
 | Apple Silicon, 2B | `JEV_TORCH_DTYPE=float32 python -m jev.server --checkpoint models/Open-Jev-2B/package/checkpoint --device mps --max-length 4096 --batch-size 1 --no-prefix-cache` | MPS support is opt-in; sufficient unified memory required; dtype changes are a separate numerical configuration |
 | One 16GB NVIDIA card, 9B | [Consumer GPU recipe](consumer-gpu.md#running-it-on-one-16-gb-card) | Community-tested RTX 4060 Ti / 5060 Ti with explicit placement and request-local cache; batch size 2; preserve author/configuration distinctions |
@@ -94,3 +96,13 @@ separate clean base-wheel/API installation from optional Torch/model tests.
 A CPU HTTP fixture tests request/response plumbing, not trained model quality.
 Fresh Linux CUDA installation and full-size model execution need their own
 hardware evidence; package imports alone do not establish them.
+
+The [H200 released-2B report](../reports/efficiency-20261002/h200-2b-summary.md)
+records actual checkpoint inference, loopback HTTP and numerical parity. It used
+Python 3.12.13, Torch 2.9.0+cu128, Triton 3.5.0, Transformers 5.10.2, PEFT 0.19.1
+and Accelerate 1.13.0. The runtime reused a read-only shared installation with an
+isolated package overlay; it was not a fresh Linux CUDA installation. The pinned
+command above preserves the tested server implementation. Record your resolved
+versions with `python -m pip freeze` and the source/package identities alongside
+each run. See the [reproducibility receipt](reproducibility-receipt-20261002.md)
+for installation and model-execution evidence kept separately.

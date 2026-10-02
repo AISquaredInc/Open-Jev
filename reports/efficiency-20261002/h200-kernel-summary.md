@@ -2,7 +2,7 @@
 
 This report measures the isolated final-row gather, BF16 residual addition, RMSNorm and FP32 scalar head. No Qwen backbone or released decision checkpoint is loaded. These timings do not establish whole-model or HTTP speedups.
 
-The NVIDIA H200 run passed all 12 CUDA/profile/ownership tests, including all three released hidden widths and invalid-row guards. All nine seeded activation cases passed probability, decision and threshold parity at tolerance 1e-4. There were zero decision changes and zero threshold flips across the audited thresholds 0.2, 0.5, 0.7, 0.8, 0.9, 0.95 and 0.99.
+The H200 run passed all 12 tests: two CUDA tests covering all three released hidden widths, residual fusion and invalid-row guards, plus ten profile, ownership and reference checks. All nine seeded activation cases passed probability, decision and threshold parity at tolerance 1e-4. There were zero decision changes and zero threshold flips across the audited thresholds 0.2, 0.5, 0.7, 0.8, 0.9, 0.95 and 0.99.
 
 Maximum logit error: 1.12e-07; maximum probability error: 2.09e-08. Observed warm P50 operator speedup: 2.63–2.75×. Each case has 100 timed iterations after 10 warmups. Timings include Python dispatch and synchronized CUDA completion; first-observed cold calls are retained separately in the JSON.
 

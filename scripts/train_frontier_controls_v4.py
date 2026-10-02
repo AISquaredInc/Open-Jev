@@ -32,6 +32,9 @@ def checkpoint_identity(path):
     names = sorted([*required, *(p.relative_to(path).as_posix() for p in weights)])
     hashes = {name: file_sha(path / name) for name in names}
     config = json.loads((path / "model.json").read_text())
+    revision = config.get("revision")
+    if not isinstance(revision, str) or len(revision) != 40 or any(c not in "0123456789abcdefABCDEF" for c in revision):
+        raise ValueError("Released checkpoint requires a pinned 40-character base revision")
     temperature = float(json.loads((path / "temperature.json").read_text())["temperature"])
     if not math.isfinite(temperature) or temperature <= 0 or config["lora_rank"] < 1:
         raise ValueError("Invalid released temperature or LoRA rank")

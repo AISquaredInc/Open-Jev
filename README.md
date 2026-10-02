@@ -48,6 +48,29 @@ results remain pending. [Prepare the pinned evaluator handoff](scripts/prepare_i
 
 **Deployment:** [Trained-model quickstart and GPU / CPU / MPS matrix](docs/deployment.md).
 
+**Measured acceleration:** attributed open-jev-fast integration and an original
+Triton final-row RMSNorm/head kernel are available as experimental opt-ins. On
+H200, the isolated operator showed 2.63–2.75× warm P50 ratios. Released-2B
+whole-model ratios were only 1.006–1.020×, without established statistical
+significance; 336 reference comparisons had no decision or threshold flips.
+Both backends peaked at 6.917 GiB on the recorded workloads. The full 27B fast
+backbone remains unmeasured. [Results and implementation](docs/fast-backend.md).
+
+**Natural support pilot:** the released 2B scored 166/256 (64.8%) versus BM25's
+211/256 (82.4%). The locked acceptance policy had 14 errors among 88 accepted
+rows, so the demo keeps human review as its default. An actual-model 12-row
+browser/export smoke passed; completed external human trials remain zero.
+[Evidence and local trial](docs/support-routing.md).
+
+**Synthetic adaptation:** a fixed 64-step released-2B pilot improved selected
+synthetic Test from 65.6% to 77.3% and controlled OOD from 64.8% to 74.2%.
+On the frozen 64-item public JevBench development sample, Choice stayed 17/34
+and Noul 9/23; Score normalized MAE fell from 0.22393 to 0.20645 across only
+seven items. Numeric and timeline weaknesses remain. This pilot does not
+replace released models or establish a new leaderboard result.
+[Training evidence](docs/frontier-controls-v4.md) ·
+[Public-development protocol](docs/jevbench-open-development.md).
+
 **Benchmarks:** [Results and scope](docs/benchmarks.md) ·
 [Website tables](https://zefan-cai.github.io/open-jev/benchmarks/) ·
 [Source code](https://github.com/Zefan-Cai/Open-Jev)

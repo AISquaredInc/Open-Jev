@@ -114,3 +114,17 @@ and return a nonzero exit code; they are not evidence of a usable speedup.
 Cold means the first observed call in this process. Disk, Hub and JIT caches may
 already be warm. CPU tests establish correctness only. Actual GPU results and
 their hardware/context scope must accompany any speed or memory claim.
+
+## Measured H200 scope
+
+On the recorded H200 run, nine seeded final-row operator cases passed parity
+and showed 2.63–2.75× warm P50 ratios. The released 2B checkpoint then passed
+eight original/example workloads, including 168 in-process and 168 loopback HTTP
+comparisons, with maximum probability error about 1.00e-7 and no decision or
+threshold flips. Whole-model P50 ratios were only 1.006–1.020× in this sequential
+run; those small differences do not establish statistical significance.
+
+See the [operator report](../reports/efficiency-20261002/h200-kernel-summary.md)
+and [released 2B report](../reports/efficiency-20261002/h200-2b-summary.md) for
+P50/P95, memory, exact source/runtime hashes and workload limits. Full 9B/27B
+checkpoint inference and the vendored tree CUDA backbone remain unmeasured.
