@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import subprocess
 
 from jev.data import SPLITS, validate_records
@@ -36,8 +37,17 @@ FROZEN_FILES = ('scripts/compare_policy_training_v6.py', 'scripts/audit_boundary
                 *('jev/'+name+'.py' for name in ('train', 'model', 'api', 'metrics', 'data',
                    'frontier_controls_v4', 'temporal_windows_v5', 'policy_controls_v6', 'boundary_controls_v7')))
 NEW_FILES = ('scripts/compare_boundary_training_v7.py', 'scripts/run_boundary_training_v7.py',
-             'scripts/replay_boundary_comparison_v7.py', 'docs/boundary-v7-run-protocol.md')
+             'scripts/replay_boundary_comparison_v7.py', 'docs/boundary-v7-run-protocol.md',
+             'scripts/run_boundary_comparison_supplement_v7.py', 'docs/boundary-v7-comparison-supplement.md',
+             'reports/boundary-v7-forensic-comparison-20261003/declaration.json')
 CANDIDATE_CELL = 'adapted_logits_at_adapted_temperature'
+
+
+def canonical_gpu_uuid(value):
+    match = re.fullmatch(r'(?:GPU-)?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})', value) if isinstance(value, str) else None
+    if match is None:
+        raise ValueError('Malformed physical GPU UUID in comparison runtime')
+    return match.group(1).lower()
 
 
 def source_identity(expected, frozen_commit=FROZEN_SOURCE):
@@ -185,10 +195,17 @@ def _prepare(args):
             or _file_sha256(stage_path) != receipt['cpu_stage_receipt_sha256']):
         raise ValueError('Controlled execution request/staging receipt changed')
     request = json.loads(request_path.read_text()); stage = json.loads(stage_path.read_text())
-    if (request['evaluation_commit'] != args.expected_commit or request['plan_sha256'] != PLAN_SHA256
+    supplemental = None
+    original_evaluation, original_output = args.expected_commit, output
+    if getattr(args, 'supplemental_request', None):
+        from scripts.run_boundary_comparison_supplement_v7 import validate_supplement
+        supplemental = validate_supplement(args, receipt, request, output)
+        original_evaluation = supplemental['original_evaluation_commit']
+        original_output = Path(supplemental['original_comparison_output'])
+    if (request['evaluation_commit'] != original_evaluation or request['plan_sha256'] != PLAN_SHA256
             or any(Path(request[key]).resolve() != Path(getattr(args, key)).resolve()
                    for key in ('dataset', 'released_checkpoint', 'training_run', 'completion_receipt'))
-            or Path(request['comparison_output']).resolve() != output.resolve()
+            or Path(request['comparison_output']).resolve() != original_output.resolve()
             or request['gpu_uuid'] != receipt['gpu_uuid']
             or stage['status'] != 'cpu_staged_no_cuda_initialization' or stage['cuda_initialized'] is not False
             or stage['source_commit'] != FROZEN_SOURCE or stage['runtime'] != request['runtime']
@@ -254,9 +271,12 @@ def _prepare(args):
              *[dataset/name for name in bound], *[training/name for name in artifact_names], receipt_path,
              *[task/name for name in proof_names], request_path, stage_path]}
     files.update(content_inputs)
+    if supplemental:
+        files.update(supplemental['files_sha256'])
     return plan, rows, released, adapted, {'evaluation_source': source, 'files_sha256': files,
         'calibration_ids_sha256': _json_sha256(ids), 'checkpoint_directory_sha256': directories,
-        'completion_receipt': receipt, 'stage': stage, 'training_sequence_ids_sha256': _json_sha256([r['id'] for r in selected['train']]),
+        'completion_receipt': receipt, 'stage': stage, 'supplemental_provenance': supplemental,
+        'training_sequence_ids_sha256': _json_sha256([r['id'] for r in selected['train']]),
         'training_sequence_evidence': 'Replayed from frozen source/settings and run identity; journal records optimizer steps, not per-row observations.'}
 
 
@@ -437,6 +457,15 @@ def build_summary(predictions, rows, released_temperature, adapted_temperature):
 
 def run(args):
     plan, rows, released, adapted, inputs = prepare(args)
+    if inputs.get('supplemental_provenance'):
+        from scripts.run_boundary_comparison_supplement_v7 import validate_launch
+        inputs['supplemental_resource'] = validate_launch(args, inputs['supplemental_provenance'], rows, inputs)
+        resource_path = inputs['supplemental_provenance']['request']['resource_receipt']
+        attempt_path = Path(inputs['supplemental_provenance']['request_path']).parent/'attempt.lock.json'
+        inputs['files_sha256'].update({resource_path: _file_sha256(resource_path), str(attempt_path): _file_sha256(attempt_path)})
+        for filename in ('controller-plan.json', 'pause_v7_comparison_restore.py', 'comparison-supplement-preflight.json'):
+            path = attempt_path.parent/filename
+            inputs['files_sha256'][str(path)] = _file_sha256(path)
     output = Path(args.output); output.mkdir(parents=True)
     write_json(output/'comparison.lock.json', dict(status='locked_before_model_loading',
         evaluation_source=inputs['evaluation_source'], training_source_commit=FROZEN_SOURCE,
@@ -460,11 +489,16 @@ def run(args):
             model = DecisionModel.load(path, device=args.device)
             runtime = runtime_identity(torch, args.device, model)
             recorded = inputs['completion_receipt']['training_runtime']
+            comparable_runtime = {**runtime, 'gpu_uuid': canonical_gpu_uuid(runtime['gpu_uuid'])}
+            comparable_released = ({**runtimes['released'], 'gpu_uuid': canonical_gpu_uuid(runtimes['released']['gpu_uuid'])}
+                                   if runtimes else None)
             if (runtime['backbone_dtype'] != 'torch.bfloat16' or runtime['head_dtype'] != 'torch.float32'
-                    or runtime['visible_device_count'] != 1 or runtime['visible_devices'] != inputs['completion_receipt']['gpu_uuid']
-                    or runtime['gpu_uuid'] != inputs['completion_receipt']['gpu_uuid'] or runtime['torch'] != recorded['torch']
+                    or type(runtime['visible_device_count']) is not int or runtime['visible_device_count'] != 1
+                    or runtime['visible_devices'] != inputs['completion_receipt']['gpu_uuid']
+                    or comparable_runtime['gpu_uuid'] != canonical_gpu_uuid(inputs['completion_receipt']['gpu_uuid'])
+                    or runtime['torch'] != recorded['torch']
                     or any(runtime['packages'][n] != recorded[n] for n in ('transformers', 'peft'))
-                    or runtimes and runtime != runtimes['released']):
+                    or comparable_released is not None and _json_sha256(comparable_runtime) != _json_sha256(comparable_released)):
                 raise ValueError('Published/final comparison runtime or recorded training packages differ')
             runtimes[weight] = runtime
             write_json(output/(weight+'.runtime.json'), runtime)
@@ -483,6 +517,11 @@ def run(args):
             or checkpoint_identity(Path(args.training_run)/'checkpoint', output, plan) != adapted
             or dict(released=directory_sha(args.released_checkpoint), adapted=directory_sha(Path(args.training_run)/'checkpoint')) != inputs['checkpoint_directory_sha256']):
         raise ValueError('Committed source/checkpoint changed during inference')
+    if inputs.get('supplemental_provenance'):
+        from scripts.run_boundary_comparison_supplement_v7 import validate_supplement
+        original_request = json.loads(Path(inputs['completion_receipt']['execution_request_path']).read_text())
+        if validate_supplement(args, inputs['completion_receipt'], original_request, output) != inputs['supplemental_provenance']:
+            raise ValueError('Original-to-supplement provenance changed during inference')
     summary = build_summary(predictions, rows, released['temperature'], adapted['temperature'])
     write_json(output/'summary.json', dict(status='complete', evaluation_source=inputs['evaluation_source'],
         training_source_commit=FROZEN_SOURCE, temperatures=dict(released=released['temperature'], adapted_calibration=adapted['temperature']),
@@ -498,6 +537,7 @@ def main():
         parser.add_argument('--'+name, required=True)
     parser.add_argument('--plan', default=str(PLAN))
     parser.add_argument('--device', default='cuda:0')
+    parser.add_argument('--supplemental-request')
     run(parser.parse_args())
 
 

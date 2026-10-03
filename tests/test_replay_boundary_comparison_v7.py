@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -343,6 +344,331 @@ class IndependentWholeComparisonTests(unittest.TestCase):
         self.assertEqual(counts['argmax_changed'], 3)
         self.assertEqual(result['correct_to_incorrect_rows'][0]['id'], 'pair-1')
         self.assertEqual(sum(v for k, v in counts.items() if '_to_' in k), counts['n'])
+
+
+class IndependentGpuRuntimeTests(unittest.TestCase):
+    UUID = '01234567-89ab-cdef-0123-456789abcdef'
+    TARGET = 'GPU-'+UUID
+    TRAINING_RUNTIME = {'torch': '2.8.0', 'transformers': '5.10.2', 'peft': '0.19.1'}
+
+    def runtimes(self):
+        record = {'gpu_uuid': self.UUID, 'visible_devices': self.TARGET, 'visible_device_count': 1,
+            'backbone_dtype': 'torch.bfloat16', 'head_dtype': 'torch.float32', 'torch': '2.8.0',
+            'packages': {'transformers': '5.10.2', 'peft': '0.19.1'}, 'diagnostic_seconds': 1.0}
+        return {weight: copy.deepcopy(record) for weight in ('released', 'adapted')}
+
+    def test_full_uuid_accepts_only_optional_exact_prefix_and_hex_case(self):
+        for value in (self.UUID, self.UUID.upper(), self.TARGET, 'GPU-'+self.UUID.upper()):
+            with self.subTest(value=value):
+                self.assertEqual(replay.canonical_gpu_uuid(value), self.UUID)
+
+    def test_malformed_mig_ordinals_lists_and_nonstrings_are_rejected(self):
+        values = ['', 'GPU-fixture', 'GPU-', self.UUID[:-1], self.UUID+'0', self.UUID.replace('-', ''),
+            '{'+self.UUID+'}', 'urn:uuid:'+self.UUID, 'gpu-'+self.UUID, 'Gpu-'+self.UUID,
+            self.TARGET+'\n', ' '+self.TARGET, self.TARGET+' ', 'GPU-GPU-'+self.UUID,
+            'GPU-g1234567-89ab-cdef-0123-456789abcdef', 'MIG-'+self.UUID, 'MIG-'+self.TARGET+'/1/0',
+            '0', 'cuda:0', '0,1', self.TARGET+','+self.TARGET, None, True, 0, [self.TARGET], (self.TARGET,)]
+        for value in values:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                replay.canonical_gpu_uuid(value)
+
+    def test_bare_prefixed_case_variants_match_without_changing_raw_evidence(self):
+        records = self.runtimes()
+        records['adapted']['gpu_uuid'] = 'GPU-'+self.UUID.upper()
+        before = copy.deepcopy(records)
+        replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.TARGET)
+        self.assertEqual(records, before)
+        for record in records.values():
+            record['visible_devices'] = self.UUID
+        replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.UUID)
+
+    def test_real_different_device_and_invalid_recorded_identifiers_are_rejected(self):
+        for value in ('GPU-01234567-89ab-cdef-0123-456789abcdee', 'GPU-fixture',
+                      'MIG-'+self.TARGET+'/1/0', '0', self.TARGET+','+self.TARGET, [self.TARGET]):
+            records = self.runtimes()
+            records['adapted']['gpu_uuid'] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.TARGET)
+        records = self.runtimes()
+        for record in records.values():
+            record['gpu_uuid'] = 'GPU-01234567-89ab-cdef-0123-456789abcdee'
+        with self.assertRaisesRegex(ValueError, 'hardware'):
+            replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.TARGET)
+
+    def test_visible_devices_stays_exact_original_receipt(self):
+        for value in (self.UUID, 'GPU-'+self.UUID.upper(), '0', self.TARGET+','+self.TARGET):
+            records = self.runtimes()
+            for record in records.values():
+                record['visible_devices'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'hardware'):
+                replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.TARGET)
+
+    def test_other_runtime_fields_are_exact_including_tiny_changes_and_types(self):
+        changes = [('diagnostic_seconds', 1.0+5e-13), ('diagnostic_seconds', 1),
+                   ('visible_device_count', True), ('visible_device_count', 1.0),
+                   ('visible_devices', self.UUID), ('backbone_dtype', 'torch.float16'),
+                   ('packages', {'transformers': '5.10.2', 'peft': '0.19.2'})]
+        for key, value in changes:
+            records = self.runtimes()
+            records['adapted'][key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'runtimes differ'):
+                replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.TARGET)
+        for key, value in [('visible_device_count', True), ('visible_device_count', 1.0),
+                           ('backbone_dtype', 'torch.float16'), ('head_dtype', 'torch.bfloat16'),
+                           ('torch', '2.7.0'), ('packages', {'transformers': '5.10.2', 'peft': '0.19.2'})]:
+            records = self.runtimes()
+            for record in records.values():
+                record[key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'hardware'):
+                replay.validate_inference_runtime(records, self.TRAINING_RUNTIME, self.TARGET)
+
+
+class IndependentSupplementProvenanceTests(unittest.TestCase):
+    """Handwritten CPU provenance only; no scores, weights or live processes."""
+    NEW_COMMIT = 'e'*40
+    GPU = 'GPU-01234567-89ab-cdef-0123-456789abcdef'
+    BOOT = '11111111-2222-3333-4444-555555555555'
+
+    def write(self, path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value, sort_keys=True)+'\n')
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name).resolve();self.root = self.base/'code';self.old = self.base/'original';self.new = self.base/'supplement'
+        self.root_patch = patch.object(replay, 'ROOT', self.root);self.root_patch.start();self.addCleanup(self.root_patch.stop)
+        self.request_path = self.new/'comparison-supplement-request.json'
+        self.declaration_path = self.root/replay.SUPPLEMENT_FILES[2]
+        self.controller_path = self.new/'original-recovery/queue-v7-handoff-original.json'
+        self.audit_path = self.new/'original-recovery/restoration.json'
+        self.runner_path = self.root/replay.SUPPLEMENT_FILES[0]
+        self.runner_path.parent.mkdir(parents=True);self.runner_path.write_bytes(b'CPU provenance fixture runner; never executed\n')
+        self.new.mkdir(parents=True);(self.new/'pause_v7_comparison_restore.py').write_bytes(b'CPU controller fixture; never executed\n')
+        self.runtime = dict(torch='2.8.0', transformers='5.10.2', peft='0.19.1', triton='3.4.0', safetensors='0.7.0', accelerate='1.13.0')
+        self.original = dict(evaluation_commit=replay.ORIGINAL_EVALUATION, plan_sha256=replay.PLAN_SHA256,
+            dataset=str(self.old/'data'), released_checkpoint=str(self.old/'released'), training_run=str(self.old/'adaptation'),
+            completion_receipt=str(self.old/'completion-receipt.json'), comparison_output=str(self.old/'comparison'),
+            gpu_uuid=self.GPU, runtime=self.runtime)
+        self.receipt = dict(status='complete', source_commit=replay.FROZEN_SOURCE, gpu_uuid=self.GPU,
+            execution_request_path=str(self.old/'execution-request.json'), checkpoint={'directory_sha256':'c'*64})
+        self.failure = dict(training_status='complete', comparison_returncode=1, automatic_promotion=False)
+        self.checkpoints = {'released': {'sha256':'a'*64}, 'adapted': {'sha256':'b'*64}}
+        self.controller = dict(status='v7_failed_original_queue_verified',
+            queue_restoration='verified_optimizer_sampler_tree_four_ranks_and_real_completions',
+            evaluation_commit=replay.ORIGINAL_EVALUATION, source_commit=replay.FROZEN_SOURCE)
+        self.audit = dict(status='independently_verified_original_queue_restored_owned_controller_guard_driver_gone',
+            controller_status=self.controller['status'], queue_restoration=self.controller['queue_restoration'],
+            evaluation_commit=replay.ORIGINAL_EVALUATION, source_commit=replay.FROZEN_SOURCE,
+            controller_receipt=str(self.old/'runs'/self.controller_path.name), full_hashes=True,
+            restoration_evidence_complete=True, failed_checks=[], checks={'handwritten_full_restore_fixture':True},
+            controller_current_identity=None, guard_current_identity=None, driver_current_identity=None)
+        self.declaration = dict(schema_version=1, kind='v7_comparison_only_supplement', supplement_id=replay.SUPPLEMENT_ID,
+            status='declared_not_executed', training_calls=0, automatic_retry=False, automatic_promotion=False,
+            training_source_commit=replay.FROZEN_SOURCE, plan_sha256=replay.PLAN_SHA256,
+            completed_checkpoint_directory_sha256='c'*64, physical_gpu_uuid=self.GPU, origin={})
+        self.request = dict(self.original, schema_version=1, kind=self.declaration['kind'], supplement_id=replay.SUPPLEMENT_ID,
+            evaluation_commit=self.NEW_COMMIT, original_task=str(self.old), original_controller_receipt=str(self.controller_path),
+            original_restoration_audit=str(self.audit_path), comparison_output=str(self.new/'comparison'),
+            resource_receipt=str(self.new/'resource-ready.json'), controller_plan=str(self.new/'controller-plan.json'))
+        self.plan = dict(schema_version=1, kind=self.declaration['kind'], supplement_id=replay.SUPPLEMENT_ID,
+            evaluation_commit=self.NEW_COMMIT, source_commit=replay.FROZEN_SOURCE, gpu_uuid=self.GPU,
+            controller_command=['/usr/bin/python3',str(self.new/'pause_v7_comparison_restore.py'),'--execute'],
+            controller_working_directory=str(self.new))
+        identity = dict(pid=101, start_ticks=501, uid=1000, boot_id=self.BOOT)
+        self.resource = dict(status='ready_for_single_attempt', ownership_verified=True, restoration_required=True,
+            kind=self.declaration['kind'], supplement_id=replay.SUPPLEMENT_ID, source_commit=replay.FROZEN_SOURCE,
+            evaluation_commit=self.NEW_COMMIT, gpu_uuid=self.GPU, boot_id=self.BOOT, checked_at_utc='2026-10-03T05:00:00+00:00', controller_identity=identity,
+            restoration_guard_identity={**identity,'pid':102,'start_ticks':502})
+        self.attempt = dict(status='single_comparison_supplement_started_no_retry', evaluation_commit=self.NEW_COMMIT,
+            pid=103, training_calls=0, controller_identity=identity, started_at_utc='2026-10-03T05:00:30+00:00')
+        self.supplement_completion = dict(status='comparison_only_complete', training_calls=0, automatic_promotion=False)
+        self.args = SimpleNamespace(**{key:self.original[key] for key in ('dataset','released_checkpoint','training_run','completion_receipt')},
+            comparison=self.request['comparison_output'], expected_commit=self.NEW_COMMIT, supplemental_request=str(self.request_path))
+        self.rebind()
+
+    def rebind(self):
+        """Rehash authored fixtures so semantic tampering reaches the independent checks."""
+        self.write(self.old/'execution-request.json', self.original);self.write(self.old/'completion-receipt.json', self.receipt)
+        self.failure.update(training_completion_receipt_sha256=replay.sha(self.old/'completion-receipt.json'),
+            execution_request_sha256=replay.sha(self.old/'execution-request.json'))
+        self.write(self.old/'experiment-completion.json', self.failure)
+        (self.old/'comparison.log').write_text('ValueError: Published/final comparison runtime or recorded training packages differ\n')
+        self.write(self.old/'comparison/comparison.lock.json', dict(status='locked_before_model_loading',
+            plan_sha256=replay.PLAN_SHA256, training_source_commit=replay.FROZEN_SOURCE,
+            evaluation_source={'commit':replay.ORIGINAL_EVALUATION}, checkpoints=self.checkpoints, inputs={'completion_receipt':self.receipt}))
+        self.write(self.controller_path, self.controller);self.write(self.audit_path, self.audit)
+        origin = dict(evaluation_commit=replay.ORIGINAL_EVALUATION,
+            failed_comparison_files_sha256=replay.file_inventory(self.old/'comparison'),
+            controller_final_sha256=replay.sha(self.controller_path), restoration_audit_sha256=replay.sha(self.audit_path))
+        for filename, key in [('execution-request.json','execution_request_sha256'), ('completion-receipt.json','completion_receipt_sha256'),
+                              ('experiment-completion.json','experiment_completion_sha256'), ('comparison.log','failure_log_sha256')]:
+            origin[key] = replay.sha(self.old/filename)
+        self.declaration['origin'] = origin;self.write(self.declaration_path, self.declaration)
+        self.request['declaration_sha256'] = replay.sha(self.declaration_path);self.write(self.request_path, self.request)
+        files = {str(p):replay.sha(p) for p in [self.request_path,self.declaration_path,self.controller_path,self.audit_path,
+            *(self.old/name for name in ('execution-request.json','completion-receipt.json','experiment-completion.json','comparison.log','comparison/comparison.lock.json'))]}
+        proof = dict(request=copy.deepcopy(self.request), request_path=str(self.request_path), request_sha256=replay.sha(self.request_path),
+            declaration_sha256=replay.sha(self.declaration_path), files_sha256=files,
+            original_evaluation_commit=replay.ORIGINAL_EVALUATION, original_comparison_output=str(self.old/'comparison'), training_calls=0)
+        source = {'commit':self.NEW_COMMIT,'files_sha256':{name:replay.sha(self.root/name) for name in (replay.SUPPLEMENT_FILES[0],replay.SUPPLEMENT_FILES[2])}}
+        directories = {'released':'a'*64,'adapted':'c'*64}
+        self.lock = dict(evaluation_source=source, checkpoints=copy.deepcopy(self.checkpoints),
+            inputs=dict(supplemental_provenance=proof,files_sha256=copy.deepcopy(files),checkpoint_directory_sha256=directories))
+        preflight = dict(status='comparison_only_cpu_preflight_passed_no_model_load', supplement_id=replay.SUPPLEMENT_ID,
+            training_calls=0,evaluation_source=source,request_sha256=proof['request_sha256'],declaration_sha256=proof['declaration_sha256'],
+            completed_training_receipt_sha256=origin['completion_receipt_sha256'],comparison_counts=replay.COUNTS,
+            inputs_sha256=copy.deepcopy(files),checkpoint_directory_sha256=directories)
+        preflight_path = self.new/'comparison-supplement-preflight.json';self.write(preflight_path,preflight)
+        self.plan.update(controller_sha256=replay.sha(self.new/'pause_v7_comparison_restore.py'), driver_sha256=replay.sha(self.runner_path),
+            execution_request_sha256=proof['request_sha256'], cpu_preflight_receipt_sha256=replay.sha(preflight_path),
+            declaration_sha256=proof['declaration_sha256']);self.write(self.new/'controller-plan.json',self.plan)
+        self.resource.update(driver_sha256=replay.sha(self.runner_path),execution_request_sha256=proof['request_sha256'],
+            controller_plan_sha256=replay.sha(self.new/'controller-plan.json'),declaration_sha256=proof['declaration_sha256'])
+        self.write(self.new/'resource-ready.json', self.resource)
+        self.attempt.update(request_sha256=proof['request_sha256'],runner_sha256=replay.sha(self.runner_path),
+            preflight_receipt_sha256=replay.sha(preflight_path),controller_plan_sha256=replay.sha(self.new/'controller-plan.json'),
+            resource_receipt_sha256=replay.sha(self.new/'resource-ready.json'));self.write(self.new/'attempt.lock.json',self.attempt)
+        self.lock['inputs']['supplemental_resource'] = dict(resource=copy.deepcopy(self.resource),
+            resource_receipt_sha256=replay.sha(self.new/'resource-ready.json'),controller_plan_sha256=replay.sha(self.new/'controller-plan.json'),
+            preflight_receipt_sha256=replay.sha(preflight_path),launch_verified_at_utc='2026-10-03T05:02:00+00:00')
+        self.lock['inputs']['files_sha256'].update({str(self.new/name):replay.sha(self.new/name) for name in
+            ('resource-ready.json','attempt.lock.json','controller-plan.json','pause_v7_comparison_restore.py','comparison-supplement-preflight.json')})
+        self.write(self.new/'comparison/summary.json', {'status':'complete','fixture_scope':'provenance only; no scores'})
+        self.supplement_completion.update(request_sha256=proof['request_sha256'],completed_training_receipt_sha256=origin['completion_receipt_sha256'],
+            summary_sha256=replay.sha(self.new/'comparison/summary.json'))
+        self.write(self.new/'comparison-supplement-completion.json',self.supplement_completion)
+
+    def validate(self):
+        return replay.validate_supplemental_provenance(self.args,self.lock,self.receipt,self.original)
+
+    def test_complete_offline_provenance_replays_without_live_processes_or_rewriting_origin(self):
+        before = replay.file_inventory(self.old)
+        with patch.object(replay.subprocess,'check_output',side_effect=AssertionError('No live subprocess')):
+            result = self.validate()
+        self.assertEqual(result['original_evaluation_commit'],replay.ORIGINAL_EVALUATION)
+        self.assertEqual(result['training_calls'],0);self.assertEqual(replay.file_inventory(self.old),before)
+        self.assertEqual(result['resource']['resource'],self.resource)
+
+    def test_optional_cli_and_locked_provenance_cannot_bypass_ordinary_binding(self):
+        lock = {'inputs':{}}
+        ordinary = copy.copy(self.args);ordinary.supplemental_request = None
+        self.assertIsNone(replay.validate_supplemental_provenance(ordinary,lock,self.receipt,self.original))
+        for args, value in [(self.args,lock),(ordinary,self.lock)]:
+            with self.assertRaisesRegex(ValueError,'appear together'):
+                replay.validate_supplemental_provenance(args,value,self.receipt,self.original)
+        lock['inputs']['supplemental_resource'] = {'resource':self.resource}
+        with self.assertRaisesRegex(ValueError,'Orphan'):
+            replay.validate_supplemental_provenance(ordinary,lock,self.receipt,self.original)
+
+    def test_original_receipt_request_bytes_and_output_tampering_are_rejected(self):
+        (self.old/'completion-receipt.json').write_text('{}')
+        with self.assertRaises(ValueError):self.validate()
+        self.rebind();self.original['evaluation_commit'] = self.NEW_COMMIT;self.rebind()
+        with self.assertRaises(ValueError):self.validate()
+        self.original['evaluation_commit'] = replay.ORIGINAL_EVALUATION
+        self.original['comparison_output'] = str(self.new/'comparison');self.rebind()
+        with self.assertRaises(ValueError):self.validate()
+
+    def test_declaration_source_plan_checkpoint_device_and_hash_tampering_are_rejected(self):
+        for key, bad in [('training_source_commit','f'*40),('plan_sha256','f'*64),
+                         ('completed_checkpoint_directory_sha256','f'*64),('physical_gpu_uuid','GPU-01234567-89ab-cdef-0123-456789abcdee')]:
+            old = self.declaration[key];self.declaration[key] = bad;self.rebind()
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate()
+            self.declaration[key] = old
+        self.rebind();self.lock['inputs']['supplemental_provenance']['request_sha256'] = '0'*64
+        with self.assertRaises(ValueError):self.validate()
+
+    def test_failed_origin_code_inventory_or_added_prediction_cannot_be_replaced(self):
+        self.failure['comparison_returncode'] = 0;self.rebind()
+        with self.assertRaises(ValueError):self.validate()
+        self.failure['comparison_returncode'] = 1;self.rebind()
+        (self.old/'comparison/released_v7_test.jsonl').write_text('CPU tampering fixture, no logits\n');self.rebind()
+        with self.assertRaisesRegex(ValueError,'inventory'):self.validate()
+
+    def test_original_restoration_requires_full_true_checks_and_all_owned_exits(self):
+        for key, value in [('full_hashes',False),('restoration_evidence_complete',False),
+                           ('checks',{'failed_preservation':False}),('checks',{}),('driver_current_identity',{'pid':123})]:
+            old = self.audit[key];self.audit[key] = value;self.rebind()
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'restoration'):self.validate()
+            self.audit[key] = old
+
+    def test_new_attempt_plan_resource_and_preflight_cannot_be_bypassed(self):
+        cases = [(self.attempt,'status','single_attempt_started_no_retry'),(self.attempt,'pid',0),
+            (self.attempt,'training_calls',1),(self.plan,'gpu_uuid','GPU-01234567-89ab-cdef-0123-456789abcdee'),
+            (self.plan,'evaluation_commit',replay.ORIGINAL_EVALUATION),(self.resource,'restoration_required',False),
+            (self.resource,'ownership_verified',False),(self.resource,'boot_id','99999999-2222-3333-4444-555555555555')]
+        for item,key,value in cases:
+            old = item[key];item[key] = value;self.rebind()
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate()
+            item[key] = old
+        self.rebind();(self.new/'comparison-supplement-preflight.json').unlink()
+        with self.assertRaises(OSError):self.validate()
+
+    def test_resource_lock_raw_hash_completion_and_committed_declaration_are_required(self):
+        self.lock['inputs']['supplemental_resource']['resource_receipt_sha256'] = '0'*64
+        with self.assertRaises(ValueError):self.validate()
+        self.rebind();self.resource['restoration_guard_identity']['boot_id'] = '99999999-2222-3333-4444-555555555555';self.rebind()
+        with self.assertRaises(ValueError):self.validate()
+        self.resource['restoration_guard_identity']['boot_id'] = self.BOOT;self.rebind()
+        self.supplement_completion['training_calls'] = 1;self.rebind()
+        with self.assertRaises(ValueError):self.validate()
+        frozen = ['scripts/compare_policy_training_v6.py','scripts/audit_boundary_controls_v7.py',
+            *('jev/'+name+'.py' for name in ('train','model','api','metrics','data','frontier_controls_v4','temporal_windows_v5','policy_controls_v6','boundary_controls_v7'))]
+        inventory = {name:'0'*64 for name in frozen+['scripts/compare_boundary_training_v7.py','scripts/run_boundary_training_v7.py',
+            'scripts/replay_boundary_comparison_v7.py','docs/boundary-v7-run-protocol.md']}
+        with patch.object(replay.subprocess,'check_output',side_effect=AssertionError('Reject before Git')):
+            with self.assertRaisesRegex(ValueError,'Incomplete locked evaluation source'):
+                replay.verify_source({'commit':self.NEW_COMMIT,'files_sha256':inventory},self.NEW_COMMIT,{},supplemental=True)
+
+    def test_metadata_types_guard_aliases_and_timezone_are_strict_without_live_checks(self):
+        cases = [(self.request,'schema_version',True),(self.declaration,'schema_version',1.0),
+            (self.declaration,'training_calls',False),(self.plan,'schema_version',True),
+            (self.resource,'checked_at_utc','2026-10-03T05:00:00'),(self.resource,'checked_at_utc','invalid')]
+        for item,key,value in cases:
+            old = item[key];item[key] = value;self.rebind()
+            with self.subTest(key=key),self.assertRaises(ValueError):self.validate()
+            item[key] = old
+        for key,value in [('pid',101),('pid',103),('pid',True),('start_ticks',False),('start_ticks',0)]:
+            old = self.resource['restoration_guard_identity'][key]
+            self.resource['restoration_guard_identity'][key] = value;self.rebind()
+            with self.subTest(guard_field=key),self.assertRaises(ValueError):self.validate()
+            self.resource['restoration_guard_identity'][key] = old
+        self.rebind();preflight_path = self.new/'comparison-supplement-preflight.json'
+        preflight = json.loads(preflight_path.read_text());preflight['comparison_counts']['v7_test'] = 256.0
+        self.write(preflight_path,preflight)
+        self.lock['inputs']['files_sha256'][str(preflight_path)] = replay.sha(preflight_path)
+        with self.assertRaisesRegex(ValueError,'preflight'):self.validate()
+
+    def test_reviewed_controller_command_cwd_and_persisted_launch_freshness(self):
+        for stamp in ('2026-10-03T05:00:00+00:00','2026-10-03T05:02:00+00:00','2026-10-03T07:00:30+02:00'):
+            self.attempt['started_at_utc'] = stamp;self.rebind();self.validate()
+        for stamp in ('2026-10-03T04:59:59+00:00','2026-10-03T05:02:00.000001+00:00','2026-10-03T05:00:30','invalid',None):
+            self.attempt['started_at_utc'] = stamp;self.rebind()
+            with self.subTest(stamp=stamp),self.assertRaises(ValueError):self.validate()
+        self.attempt['started_at_utc'] = '2026-10-03T05:00:30+00:00'
+        for key,value in [('controller_command',['/usr/bin/python3','unreviewed.py','--execute']),
+                          ('controller_working_directory',str(self.old))]:
+            old = self.plan[key];self.plan[key] = value;self.rebind()
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'command/cwd'):self.validate()
+            self.plan[key] = old
+
+    def test_final_launch_verification_seals_both_query_time_boundaries_and_timezone(self):
+        self.attempt['started_at_utc'] = self.resource['checked_at_utc'];self.rebind()
+        for stamp in ('2026-10-03T05:00:00+00:00','2026-10-03T05:02:00+00:00','2026-10-03T07:00:45+02:00'):
+            self.lock['inputs']['supplemental_resource']['launch_verified_at_utc'] = stamp
+            with self.subTest(stamp=stamp):
+                result = self.validate()
+                self.assertEqual(result['resource']['launch_verified_at_utc'],stamp)
+
+    def test_missing_naive_invalid_future_or_query_expired_final_verification_is_rejected(self):
+        saved = self.lock['inputs']['supplemental_resource']
+        for stamp in (None,True,123,'invalid','2026-10-03T05:01:00',
+                      '2026-10-03T04:59:59+00:00','2026-10-03T05:00:29.999999+00:00',
+                      '2026-10-03T05:02:00.000001+00:00'):
+            saved['launch_verified_at_utc'] = stamp
+            with self.subTest(stamp=stamp),self.assertRaises(ValueError):self.validate()
+        saved.pop('launch_verified_at_utc')
+        with self.assertRaisesRegex(ValueError,'timestamps'):self.validate()
 
 
 class IndependentPackageProofTests(unittest.TestCase):

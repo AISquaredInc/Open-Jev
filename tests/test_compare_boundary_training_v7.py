@@ -11,7 +11,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from jev.boundary_controls_v7 import records as v7_records
 from jev.data import SPLITS, _write_dataset
@@ -21,6 +21,10 @@ from jev.temporal_windows_v5 import records as v5_records
 from jev.train import _file_sha256, _json_sha256, read_rows, training_identity
 from scripts import compare_boundary_training_v7 as comparison
 from scripts import compare_policy_training_v6 as legacy
+
+
+GPU_UUID = 'GPU-01234567-89ab-cdef-0123-456789abcdef'
+OTHER_GPU_UUID = 'GPU-fedcba98-7654-3210-fedc-ba9876543210'
 
 
 def journal(path, rows):
@@ -54,6 +58,20 @@ class BoundaryComparisonMetricsTests(unittest.TestCase):
 
     def predictions(self):
         return {name: [prediction(r) for r in rows] for name, rows in self.rows.items()}
+
+    def test_gpu_uuid_requires_complete_physical_identifier(self):
+        expected = GPU_UUID[4:]
+        for value in (expected, expected.upper(), GPU_UUID, 'GPU-'+expected.upper()):
+            with self.subTest(value=value):
+                self.assertEqual(comparison.canonical_gpu_uuid(value), expected)
+        for value in (None, 1, b'01234567-89ab-cdef-0123-456789abcdef', '', 'GPU-fixture',
+                      'gpu-'+expected, 'GPU-GPU-'+expected, 'MIG-'+expected, 'MIG-'+GPU_UUID+'/1/0',
+                      expected.replace('-', ''), '{'+expected+'}', expected[:-1], expected+'0',
+                      expected.replace('a', 'g'), ' '+GPU_UUID, GPU_UUID+' ', GPU_UUID+'\n',
+                      GPU_UUID+','+OTHER_GPU_UUID):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'physical GPU UUID'):
+                comparison.canonical_gpu_uuid(value)
+        self.assertNotEqual(comparison.canonical_gpu_uuid(OTHER_GPU_UUID), expected)
 
     def test_inclusive_thresholds_and_nearest_floats(self):
         values = [math.nextafter(.2, 0.), .2, math.nextafter(.2, 1.),
@@ -255,11 +273,11 @@ class BoundaryComparisonPreflightTests(unittest.TestCase):
             base_snapshot_files_sha256=dict(weights=_file_sha256(snapshot/'weights'))))
         comparison.write_json(self.root/'execution-request.json', dict(evaluation_commit=self.args.expected_commit, plan_sha256=_file_sha256(self.args.plan) if Path(self.args.plan).exists() else 'pending',
             dataset=self.args.dataset, released_checkpoint=self.args.released_checkpoint, training_run=self.args.training_run,
-            completion_receipt=self.args.completion_receipt, comparison_output=self.args.output, gpu_uuid='GPU-fixture', runtime=self.runtime))
+            completion_receipt=self.args.completion_receipt, comparison_output=self.args.output, gpu_uuid=GPU_UUID, runtime=self.runtime))
         comparison.write_json(self.args.completion_receipt, dict(status='complete', source_commit=self.plan['source_commit'], training_runtime=self.runtime,
             artifacts_sha256={n: _file_sha256(self.training/n) for n in ('run.json', 'summary.json', 'training.jsonl', 'calibration.jsonl')},
             checkpoint=dict(directory_sha256=comparison.directory_sha(cp), files_sha256={p.relative_to(cp).as_posix(): _file_sha256(p) for p in cp.rglob('*') if p.is_file()}),
-            driver_sha256=driver_sha, gpu_uuid='GPU-fixture',
+            driver_sha256=driver_sha, gpu_uuid=GPU_UUID,
             execution_request_path=str(self.root/'execution-request.json'), execution_request_sha256=_file_sha256(self.root/'execution-request.json'),
             cpu_stage_receipt_sha256=_file_sha256(self.root/'cpu-stage-receipt.json'),
             initial_load_verification_sha256=_file_sha256(self.root/'initial-load-verification.json'),
@@ -346,16 +364,45 @@ class BoundaryComparisonPreflightTests(unittest.TestCase):
         torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, empty_cache=lambda: None))
         model_module = SimpleNamespace(DecisionModel=SimpleNamespace(load=lambda *args, **kwargs: object()))
         runtime = dict(torch=self.runtime['torch'], packages={n: self.runtime[n] for n in ('transformers', 'peft')},
-            gpu_uuid='GPU-fixture', visible_devices='GPU-fixture', visible_device_count=1,
+            gpu_uuid=GPU_UUID[4:], visible_devices=GPU_UUID, visible_device_count=1,
             backbone_dtype='torch.bfloat16', head_dtype='torch.float32')
         for key, wrong in (('backbone_dtype', 'torch.float16'), ('head_dtype', 'torch.float16'),
-                           ('visible_device_count', 2), ('visible_devices', 'another'), ('gpu_uuid', 'another')):
-            self.args.output = str(self.root/('comparison-'+key)); self.refresh_receipt()
+                           ('visible_device_count', 2), ('visible_device_count', True), ('visible_device_count', 1.0),
+                           ('visible_devices', OTHER_GPU_UUID),
+                           ('visible_devices', GPU_UUID+','+OTHER_GPU_UUID),
+                           ('visible_devices', 'GPU-'+GPU_UUID[4:].upper()),
+                           ('gpu_uuid', OTHER_GPU_UUID), ('gpu_uuid', 'MIG-'+GPU_UUID+'/1/0')):
+            self.args.output = str(self.root/('comparison-'+key+'-'+str(wrong).replace('/', '-'))); self.refresh_receipt()
             invalid = {**runtime, key: wrong}
+            predict = Mock(side_effect=AssertionError('Invalid hardware must fail before prediction'))
             with patch.dict(sys.modules, {'torch': torch, 'jev.model': model_module}), \
                     patch.object(comparison, 'runtime_identity', new=lambda *args: invalid), \
+                    patch.object(comparison, 'predict', predict), \
                     self.subTest(key=key), self.assertRaisesRegex(ValueError, 'runtime'):
                 comparison.run(self.args)
+            predict.assert_not_called()
+            self.assertFalse((Path(self.args.output)/'summary.json').exists())
+
+    def test_non_uuid_runtime_changes_fail_before_adapted_predictions(self):
+        torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, empty_cache=lambda: None))
+        model_module = SimpleNamespace(DecisionModel=SimpleNamespace(load=lambda *args, **kwargs: object()))
+        runtime = dict(torch=self.runtime['torch'], packages={**{n: self.runtime[n] for n in ('transformers', 'peft')}, 'triton': 'fixture'},
+            gpu_uuid=GPU_UUID[4:], visible_devices=GPU_UUID, visible_device_count=1,
+            backbone_dtype='torch.bfloat16', head_dtype='torch.float32', cuda='fixture-cuda', tf32=False,
+            total_memory_bytes=1000)
+        for key, wrong in (('cuda', 'other-cuda'), ('tf32', True), ('tf32', 0),
+                           ('total_memory_bytes', 2000), ('total_memory_bytes', 1000.0),
+                           ('packages', {**runtime['packages'], 'triton': 'other-triton'})):
+            self.args.output = str(self.root/('comparison-other-'+key+'-'+str(wrong))); self.refresh_receipt()
+            adapted = {**runtime, 'gpu_uuid': 'GPU-'+GPU_UUID[4:].upper(), key: wrong}
+            predict = Mock(return_value=[])
+            with patch.dict(sys.modules, {'torch': torch, 'jev.model': model_module}), \
+                    patch.object(comparison, 'runtime_identity', side_effect=[runtime, adapted]), \
+                    patch.object(comparison, 'predict', predict), patch('sys.stdout', new_callable=io.StringIO), \
+                    self.subTest(key=key), self.assertRaisesRegex(ValueError, 'runtime'):
+                comparison.run(self.args)
+            self.assertEqual(predict.call_count, 8)
+            self.assertFalse((Path(self.args.output)/'adapted.runtime.json').exists())
             self.assertFalse((Path(self.args.output)/'summary.json').exists())
 
     def test_settings_resume_missing_completion_and_output_overlap_rejected(self):
@@ -388,10 +435,12 @@ class BoundaryComparisonPreflightTests(unittest.TestCase):
             def __del__(self): Model.live -= 1; events.append('delete')
         torch = SimpleNamespace(inference_mode=nullcontext, cuda=SimpleNamespace(is_available=lambda: True, synchronize=lambda device: None, empty_cache=lambda: None))
         runtime = dict(torch=self.runtime['torch'], packages={n: self.runtime[n] for n in ('transformers', 'peft')},
-            device='fixture-device', gpu_uuid='GPU-fixture', visible_devices='GPU-fixture', visible_device_count=1,
+            device='fixture-device', gpu_uuid=GPU_UUID[4:], visible_devices=GPU_UUID, visible_device_count=1,
             backbone_dtype='torch.bfloat16', head_dtype='torch.float32')
+        adapted_runtime = {**runtime, 'gpu_uuid': 'GPU-'+GPU_UUID[4:].upper()}
+        runtimes = iter((runtime, adapted_runtime))
         with patch.dict(sys.modules, {'torch': torch, 'jev.model': SimpleNamespace(DecisionModel=Model)}), \
-                patch.object(comparison, 'runtime_identity', new=lambda *args: runtime), patch('sys.stdout', new_callable=io.StringIO):
+                patch.object(comparison, 'runtime_identity', new=lambda *args: next(runtimes)), patch('sys.stdout', new_callable=io.StringIO):
             comparison.run(self.args)
         summary = json.loads((Path(self.args.output)/'summary.json').read_text())
         self.assertEqual(events, ['load', 'delete', 'load', 'delete'])
@@ -399,6 +448,9 @@ class BoundaryComparisonPreflightTests(unittest.TestCase):
         self.assertEqual(len(summary['journal_files_sha256']), 16)
         self.assertEqual(sum(len(comparison.read(Path(self.args.output)/name)) for name in summary['journal_files_sha256']), 1808)
         self.assertFalse(summary['publication_decision']['automatic_promotion'])
+        self.assertEqual(summary['runtime'], dict(released=runtime, adapted=adapted_runtime))
+        self.assertEqual(json.loads((Path(self.args.output)/'released.runtime.json').read_text())['gpu_uuid'], GPU_UUID[4:])
+        self.assertEqual(json.loads((Path(self.args.output)/'adapted.runtime.json').read_text())['gpu_uuid'], 'GPU-'+GPU_UUID[4:].upper())
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@
 import argparse
 from collections import Counter, defaultdict
 import copy
+from datetime import datetime
 import hashlib
 import json
 import math
@@ -24,6 +25,10 @@ SOURCES = dict(v4='frontier-controls-v4',v5='temporal-windows-v5',
     v6='original-policy-controls-v6-candidate',v7='boundary-controls-v7')
 MIXTURE_COUNTS = dict(train=3792,calibration=436,validation=436,test=256,ood=256)
 RELEASED_TEMPERATURE = 1.518796342858676
+ORIGINAL_EVALUATION = '37729b2340e8d00fb211784d2181dd167db4f96b'
+SUPPLEMENT_ID = 'boundary-v7-comparison-s1-20261003'
+SUPPLEMENT_FILES = ('scripts/run_boundary_comparison_supplement_v7.py',
+    'docs/boundary-v7-comparison-supplement.md', 'reports/boundary-v7-forensic-comparison-20261003/declaration.json')
 
 
 def sha(path):
@@ -43,6 +48,29 @@ def read(path):
 
 def require(condition,message):
     if not condition:raise ValueError(message)
+
+
+def canonical_gpu_uuid(value):
+    require(type(value) is str,'Full physical GPU UUID must be a string')
+    match=re.fullmatch(r'(?:GPU-)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})',value)
+    require(match is not None,'Full physical GPU UUID required; MIG, ordinals and lists are excluded')
+    return match.group(1).lower()
+
+
+def validate_inference_runtime(records,training_runtime,gpu_uuid):
+    require(set(records) == {'released','adapted'},'Runtime checkpoint set differs')
+    expected_gpu=canonical_gpu_uuid(gpu_uuid)
+    normalized={weight:{**record,'gpu_uuid':canonical_gpu_uuid(record['gpu_uuid'])}
+        for weight,record in records.items()}
+    require(json_sha(normalized['released']) == json_sha(normalized['adapted']),'Recorded inference runtimes differ')
+    for weight,record in records.items():
+        require(record['backbone_dtype'] == 'torch.bfloat16' and record['head_dtype'] == 'torch.float32'
+            and type(record['visible_device_count']) is int and record['visible_device_count'] == 1
+            and record['visible_devices'] == gpu_uuid
+            and normalized[weight]['gpu_uuid'] == expected_gpu
+            and record['torch'] == training_runtime['torch']
+            and all(record['packages'][key] == training_runtime[key] for key in ('transformers','peft')),
+            'Recorded inference hardware/dtype/packages differ')
 
 
 def close(actual,expected,path='value'):
@@ -522,12 +550,168 @@ def checkpoint_identity(directory):
     return dict(files_sha256=inventory,sha256=json_sha(inventory),config=config,adapter_config=adapter,temperature=temperature)
 
 
-def verify_source(identity,expected_commit,plan):
+def validate_supplemental_provenance(args,lock,receipt,original_request):
+    """Independently reread origin and offline launch evidence; no live guard checks."""
+    saved=lock['inputs'].get('supplemental_provenance')
+    requested=getattr(args,'supplemental_request',None)
+    require(bool(requested) == (saved is not None),'Supplement request and locked provenance must appear together')
+    if saved is None:
+        require(lock['inputs'].get('supplemental_resource') is None,'Orphan supplemental resource cannot bypass original binding')
+        return None
+    path=Path(requested).resolve();request=json.loads(path.read_text())
+    declaration_path=ROOT/SUPPLEMENT_FILES[2];declaration=json.loads(declaration_path.read_text());origin=declaration['origin']
+    require(Path(saved['request_path']).resolve() == path and json_sha(saved['request']) == json_sha(request)
+        and saved['request_sha256'] == sha(path) and request['declaration_sha256'] == sha(declaration_path),
+        'Locked supplemental request/declaration changed')
+    require(type(request.get('schema_version')) is int and type(declaration.get('schema_version')) is int
+        and request['schema_version'] == declaration['schema_version'] == 1
+        and request.get('kind') == declaration.get('kind') == 'v7_comparison_only_supplement'
+        and request.get('supplement_id') == declaration.get('supplement_id') == SUPPLEMENT_ID
+        and declaration['status'] == 'declared_not_executed' and type(declaration['training_calls']) is int and declaration['training_calls'] == 0
+        and declaration['automatic_retry'] is False and declaration['automatic_promotion'] is False,
+        'Unknown comparison-only supplement declaration')
+    require(request['evaluation_commit'] == args.expected_commit != ORIGINAL_EVALUATION
+        and origin['evaluation_commit'] == original_request['evaluation_commit'] == ORIGINAL_EVALUATION
+        and declaration['training_source_commit'] == receipt['source_commit'] == FROZEN_SOURCE
+        and declaration['plan_sha256'] == request['plan_sha256'] == original_request['plan_sha256'] == PLAN_SHA256
+        and declaration['completed_checkpoint_directory_sha256'] == receipt['checkpoint']['directory_sha256']
+        and declaration['physical_gpu_uuid'] == request['gpu_uuid'] == receipt['gpu_uuid'] == original_request['gpu_uuid']
+        and set(request['runtime']) == {'torch','transformers','peft','triton','safetensors','accelerate'}
+        and json_sha(request['runtime']) == json_sha(original_request['runtime']),
+        'Supplement changed the frozen source/checkpoint/plan/device/runtime')
+    task=Path(args.completion_receipt).resolve().parent
+    require(Path(request['original_task']).resolve() == task
+        and Path(receipt['execution_request_path']).resolve() == task/'execution-request.json', 'Supplement original task differs')
+    for key in ('dataset','released_checkpoint','training_run','completion_receipt'):
+        require(Path(request[key]).resolve() == Path(original_request[key]).resolve() == Path(getattr(args,key)).resolve(),
+            'Supplement changed completed input: '+key)
+    require(path.name == 'comparison-supplement-request.json'
+        and Path(request['comparison_output']).resolve() == Path(args.comparison).resolve() == path.parent/'comparison'
+        and Path(request['resource_receipt']).resolve() == path.parent/'resource-ready.json'
+        and Path(request['controller_plan']).resolve() == path.parent/'controller-plan.json',
+        'Supplement output/resource must belong to its new task')
+    for old in (task,ROOT.resolve(),Path(args.dataset).resolve(),Path(args.released_checkpoint).resolve()):
+        require(not path.parent.is_relative_to(old) and not old.is_relative_to(path.parent), 'Supplement overlaps preserved evidence/source')
+    for key in ('original_task','original_controller_receipt','original_restoration_audit','dataset','released_checkpoint',
+                'training_run','completion_receipt','comparison_output','resource_receipt','controller_plan'):
+        require(Path(request[key]).is_absolute() and 'future-host' not in Path(request[key]).parts, 'Supplement path is unresolved: '+key)
+    failed=Path(original_request['comparison_output'])
+    require(failed.resolve() == task/'comparison' and set(origin['failed_comparison_files_sha256']) == {'comparison.lock.json'}
+        and file_inventory(failed) == origin['failed_comparison_files_sha256'], 'Original failed inventory changed or contains predictions')
+    files={str(path):sha(path),str(declaration_path):sha(declaration_path)}
+    for filename,key in (('execution-request.json','execution_request_sha256'),('completion-receipt.json','completion_receipt_sha256'),
+                         ('experiment-completion.json','experiment_completion_sha256'),('comparison.log','failure_log_sha256')):
+        original=task/filename
+        require(sha(original) == origin[key], 'Original completion/failure bytes changed: '+filename)
+        files[str(original)]=origin[key]
+    require(json_sha(json.loads((task/'execution-request.json').read_text())) == json_sha(original_request)
+        and json_sha(json.loads((task/'completion-receipt.json').read_text())) == json_sha(receipt), 'Original raw request/receipt differs')
+    failure=json.loads((task/'experiment-completion.json').read_text())
+    require(failure['training_status'] == 'complete' and type(failure['comparison_returncode']) is int
+        and failure['comparison_returncode'] == 1 and failure['automatic_promotion'] is False
+        and failure['training_completion_receipt_sha256'] == origin['completion_receipt_sha256']
+        and failure['execution_request_sha256'] == origin['execution_request_sha256'], 'Origin is not completed training with failed comparison')
+    require('ValueError: Published/final comparison runtime or recorded training packages differ'
+        in (task/'comparison.log').read_text(), 'Original comparison failure diagnostic differs')
+    old_lock=json.loads((failed/'comparison.lock.json').read_text())
+    require(old_lock['status'] == 'locked_before_model_loading' and old_lock['plan_sha256'] == PLAN_SHA256
+        and old_lock['training_source_commit'] == FROZEN_SOURCE and old_lock['evaluation_source']['commit'] == ORIGINAL_EVALUATION
+        and json_sha(old_lock['inputs']['completion_receipt']) == json_sha(receipt)
+        and json_sha(old_lock['checkpoints']) == json_sha(lock['checkpoints']), 'Original failed comparison provenance/checkpoints differs')
+    files.update({str(failed/name):digest for name,digest in origin['failed_comparison_files_sha256'].items()})
+    controller_path,audit_path=map(Path,(request['original_controller_receipt'],request['original_restoration_audit']))
+    require(sha(controller_path) == origin['controller_final_sha256'] and sha(audit_path) == origin['restoration_audit_sha256'],
+        'Original controller/restoration bytes changed')
+    controller,audit=map(lambda p:json.loads(p.read_text()),(controller_path,audit_path))
+    require(controller['status'] == audit['controller_status'] == 'v7_failed_original_queue_verified'
+        and controller['queue_restoration'] == audit['queue_restoration'] == 'verified_optimizer_sampler_tree_four_ranks_and_real_completions'
+        and controller['evaluation_commit'] == audit['evaluation_commit'] == ORIGINAL_EVALUATION
+        and controller['source_commit'] == audit['source_commit'] == FROZEN_SOURCE
+        and controller_path.name == Path(audit['controller_receipt']).name, 'Original terminal recovery identity differs')
+    require(audit['status'] == 'independently_verified_original_queue_restored_owned_controller_guard_driver_gone'
+        and audit['restoration_evidence_complete'] is True and audit['full_hashes'] is True and audit['failed_checks'] == []
+        and audit['checks'] and all(value is True for value in audit['checks'].values())
+        and all(audit[name+'_current_identity'] is None for name in ('controller','guard','driver')),
+        'Original full independent restoration is incomplete')
+    files.update({str(controller_path):sha(controller_path),str(audit_path):sha(audit_path)})
+    proof=dict(request=request,request_path=str(path),request_sha256=sha(path),declaration_sha256=sha(declaration_path),
+        files_sha256=files,original_evaluation_commit=ORIGINAL_EVALUATION,original_comparison_output=str(failed),training_calls=0)
+    require(json_sha(saved) == json_sha(proof), 'Locked supplemental origin proof differs')
+    preflight_path=path.parent/'comparison-supplement-preflight.json';preflight=json.loads(preflight_path.read_text())
+    plan_path=Path(request['controller_plan']);controller_source=path.parent/'pause_v7_comparison_restore.py'
+    attempt_path=path.parent/'attempt.lock.json';resource_path=Path(request['resource_receipt'])
+    launch_paths={str(p) for p in (preflight_path,plan_path,controller_source,attempt_path,resource_path)}
+    require(launch_paths <= set(lock['inputs']['files_sha256']), 'Locked supplemental launch inventory is incomplete')
+    for filename in launch_paths:
+        require(sha(filename) == lock['inputs']['files_sha256'][filename], 'Supplement launch bytes changed: '+filename)
+    prepared_files={p:digest for p,digest in lock['inputs']['files_sha256'].items() if p not in launch_paths}
+    expected_preflight=dict(status='comparison_only_cpu_preflight_passed_no_model_load',supplement_id=SUPPLEMENT_ID,
+        training_calls=0,evaluation_source=lock['evaluation_source'],request_sha256=proof['request_sha256'],
+        declaration_sha256=proof['declaration_sha256'],completed_training_receipt_sha256=origin['completion_receipt_sha256'],
+        comparison_counts=COUNTS,inputs_sha256=prepared_files,checkpoint_directory_sha256=lock['inputs']['checkpoint_directory_sha256'])
+    require(json_sha(preflight) == json_sha(expected_preflight), 'Supplement CPU preflight/source/input binding differs')
+    runner_sha=sha(ROOT/SUPPLEMENT_FILES[0]);plan=json.loads(plan_path.read_text());attempt=json.loads(attempt_path.read_text())
+    require(type(plan['schema_version']) is int and plan['schema_version'] == 1
+        and plan['kind'] == 'v7_comparison_only_supplement' and plan['supplement_id'] == SUPPLEMENT_ID
+        and plan['evaluation_commit'] == args.expected_commit and plan['source_commit'] == FROZEN_SOURCE
+        and plan['gpu_uuid'] == request['gpu_uuid'] and plan['controller_sha256'] == sha(controller_source)
+        and plan['driver_sha256'] == runner_sha and plan['execution_request_sha256'] == proof['request_sha256']
+        and plan['cpu_preflight_receipt_sha256'] == sha(preflight_path) and plan['declaration_sha256'] == proof['declaration_sha256'],
+        'Supplement controller plan/source/preflight binding differs')
+    require(json_sha(plan['controller_command']) == json_sha(['/usr/bin/python3',str(controller_source),'--execute'])
+        and Path(plan['controller_working_directory']).resolve() == path.parent, 'Supplement reviewed controller command/cwd differs')
+    require(attempt['status'] == 'single_comparison_supplement_started_no_retry'
+        and attempt['request_sha256'] == proof['request_sha256'] and attempt['runner_sha256'] == runner_sha
+        and attempt['evaluation_commit'] == args.expected_commit and type(attempt['pid']) is int and attempt['pid'] > 0
+        and type(attempt['training_calls']) is int and attempt['training_calls'] == 0
+        and attempt['preflight_receipt_sha256'] == sha(preflight_path) and attempt['controller_plan_sha256'] == sha(plan_path)
+        and attempt['resource_receipt_sha256'] == sha(resource_path), 'Supplement attempt lock differs')
+    resource=json.loads(resource_path.read_text());saved_resource=lock['inputs']['supplemental_resource']
+    require(saved_resource['resource_receipt_sha256'] == sha(resource_path)
+        and saved_resource['controller_plan_sha256'] == sha(plan_path) and saved_resource['preflight_receipt_sha256'] == sha(preflight_path)
+        and json_sha(saved_resource['resource']) == json_sha(resource), 'Locked supplemental raw resource changed')
+    require(resource['status'] == 'ready_for_single_attempt' and resource['ownership_verified'] is True
+        and resource['restoration_required'] is True and resource['gpu_uuid'] == request['gpu_uuid']
+        and resource['source_commit'] == FROZEN_SOURCE and resource['evaluation_commit'] == args.expected_commit
+        and resource['kind'] == 'v7_comparison_only_supplement' and resource['supplement_id'] == SUPPLEMENT_ID
+        and resource['driver_sha256'] == runner_sha and resource['execution_request_sha256'] == proof['request_sha256']
+        and resource['controller_plan_sha256'] == sha(plan_path) and resource['declaration_sha256'] == proof['declaration_sha256']
+        and json_sha(resource['controller_identity']) == json_sha(attempt['controller_identity']),
+        'Supplement resource/source/request/guard binding differs')
+    canonical_gpu_uuid(resource['gpu_uuid'])
+    require(type(resource.get('checked_at_utc')) is str and type(attempt.get('started_at_utc')) is str
+        and type(saved_resource.get('launch_verified_at_utc')) is str, 'Supplement launch/resource timestamps must be strings')
+    checked=datetime.fromisoformat(resource['checked_at_utc'])
+    started=datetime.fromisoformat(attempt['started_at_utc'])
+    verified=datetime.fromisoformat(saved_resource['launch_verified_at_utc'])
+    require(checked.tzinfo is not None and started.tzinfo is not None and verified.tzinfo is not None
+        and checked <= started <= verified and 0 <= (verified-checked).total_seconds() <= 120,
+        'Supplement final launch verification did not record a fresh timezone-aware resource')
+    require(type(resource['boot_id']) is str and re.fullmatch(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',resource['boot_id']),
+        'Supplement resource boot identity is invalid')
+    identities=[resource['controller_identity'],resource['restoration_guard_identity']]
+    for identity in identities:
+        require(type(identity['pid']) is int and identity['pid'] > 0 and type(identity['start_ticks']) is int
+            and identity['start_ticks'] > 0 and type(identity['uid']) is int and identity['uid'] >= 0
+            and identity['boot_id'] == resource['boot_id'], 'Supplement stored controller/guard birth/boot identity differs')
+    require(identities[0]['uid'] == identities[1]['uid'] and len({attempt['pid'],*(identity['pid'] for identity in identities)}) == 3,
+        'Supplement runner/controller/guard identities overlap')
+    completion_path=path.parent/'comparison-supplement-completion.json';completion=json.loads(completion_path.read_text())
+    require(completion['status'] == 'comparison_only_complete' and type(completion['training_calls']) is int and completion['training_calls'] == 0
+        and completion['request_sha256'] == proof['request_sha256'] and completion['completed_training_receipt_sha256'] == origin['completion_receipt_sha256']
+        and completion['summary_sha256'] == sha(Path(args.comparison)/'summary.json') and completion['automatic_promotion'] is False
+        and not (path.parent/'comparison-supplement-failure.json').exists(), 'Supplement completion is incomplete or failed')
+    for filename,digest in files.items():require(sha(filename) == digest,'Supplement origin changed during replay: '+filename)
+    return dict(**proof,resource=saved_resource,attempt_lock=attempt,attempt_lock_sha256=sha(attempt_path),
+        cpu_preflight_sha256=sha(preflight_path),supplement_completion_sha256=sha(completion_path))
+
+
+def verify_source(identity,expected_commit,plan,*,supplemental=False):
     require(identity['commit'] == expected_commit,'Locked evaluation source differs')
     frozen=('scripts/compare_policy_training_v6.py','scripts/audit_boundary_controls_v7.py',
         *('jev/'+name+'.py' for name in ('train','model','api','metrics','data','frontier_controls_v4','temporal_windows_v5','policy_controls_v6','boundary_controls_v7')))
     require(set(identity['files_sha256']) >= set(frozen) | {'scripts/compare_boundary_training_v7.py','scripts/run_boundary_training_v7.py',
-        'scripts/replay_boundary_comparison_v7.py','docs/boundary-v7-run-protocol.md'},
+        'scripts/replay_boundary_comparison_v7.py','docs/boundary-v7-run-protocol.md'} | (set(SUPPLEMENT_FILES) if supplemental else set()),
         'Incomplete locked evaluation source inventory')
     environment=os.environ.copy()
     for name in ('GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR'):environment.pop(name,None)
@@ -554,7 +738,8 @@ def validate_evidence(args):
         and lock['plan_sha256'] == PLAN_SHA256 and lock['training_source_commit'] == summary['training_source_commit'] == FROZEN_SOURCE,
         'Comparison lock/completion evidence differs')
     close(summary['evaluation_source'],lock['evaluation_source'],'evaluation source')
-    verify_source(lock['evaluation_source'],args.expected_commit,plan)
+    verify_source(lock['evaluation_source'],args.expected_commit,plan,
+        supplemental=lock['inputs'].get('supplemental_provenance') is not None)
     close(lock['selected_ids'],{name:[r['id'] for r in values] for name,values in rows.items()},'locked selected IDs')
     close(lock['selected_rows_sha256'],{name:json_sha(values) for name,values in rows.items()},'locked source rows')
     for path,digest in lock['inputs']['files_sha256'].items():require(sha(path) == digest,'Locked input changed: '+path)
@@ -575,11 +760,14 @@ def validate_evidence(args):
     require(request_path.resolve().parent == task.resolve() and sha(request_path) == receipt['execution_request_sha256']
         and sha(stage_path) == receipt['cpu_stage_receipt_sha256'],'Execution/staging proof changed')
     request=json.loads(request_path.read_text());stage=json.loads(stage_path.read_text())
-    require(request['evaluation_commit'] == args.expected_commit and request['plan_sha256'] == PLAN_SHA256
+    supplemental=validate_supplemental_provenance(args,lock,receipt,request)
+    original_evaluation=supplemental['original_evaluation_commit'] if supplemental else args.expected_commit
+    original_comparison=Path(supplemental['original_comparison_output']) if supplemental else comparison
+    require(request['evaluation_commit'] == original_evaluation and request['plan_sha256'] == PLAN_SHA256
         and request['gpu_uuid'] == receipt['gpu_uuid'] and request['cpu_stage_receipt_sha256'] == sha(stage_path),'Execution request identity differs')
     for key in ('dataset','released_checkpoint','training_run','completion_receipt'):
         require(Path(request[key]).resolve() == Path(getattr(args,key)).resolve(),'Execution request path differs: '+key)
-    require(Path(request['comparison_output']).resolve() == comparison.resolve(),'Comparison output path differs')
+    require(Path(request['comparison_output']).resolve() == original_comparison.resolve(),'Comparison output path differs')
     require(stage['status'] == 'cpu_staged_no_cuda_initialization' and stage['cuda_initialized'] is False
         and stage['source_commit'] == FROZEN_SOURCE and stage['runtime'] == request['runtime'],'CPU staged runtime differs')
     snapshot=Path(stage['base_snapshot']);require(snapshot.name == released['config']['revision'],'Snapshot revision differs')
@@ -637,14 +825,10 @@ def validate_evidence(args):
     require(temperature['split'] == 'calibration' and temperature['n'] == 436
         and temperature['ids_sha256'] == hashlib.sha256(json.dumps(meta['calibration_ids']).encode()).hexdigest(),'Calibration provenance differs')
     close(summary['temperatures'],dict(released=released['temperature'],adapted_calibration=adapted['temperature']),'summary temperatures')
-    close(summary['runtime']['released'],summary['runtime']['adapted'],'same inference runtime')
-    require(set(summary['runtime']) == {'released','adapted'},'Runtime checkpoint set differs')
+    validate_inference_runtime(summary['runtime'],runtime,receipt['gpu_uuid'])
     for weight,record in summary['runtime'].items():
-        close(json.loads((comparison/(weight+'.runtime.json')).read_text()),record,'persisted runtime/'+weight)
-        require(record['backbone_dtype'] == 'torch.bfloat16' and record['head_dtype'] == 'torch.float32'
-            and record['visible_device_count'] == 1 and record['visible_devices'] == record['gpu_uuid'] == receipt['gpu_uuid']
-            and record['torch'] == runtime['torch'] and all(record['packages'][key] == runtime[key] for key in ('transformers','peft')),
-            'Recorded inference hardware/dtype/packages differ')
+        require(json_sha(json.loads((comparison/(weight+'.runtime.json')).read_text())) == json_sha(record),
+            'Persisted raw runtime differs: '+weight)
     journal_names={w+'_'+name+'.jsonl' for w in ('released','adapted') for name in COUNTS}
     require(set(summary['journal_files_sha256']) == journal_names == {p.name for p in comparison.glob('*.jsonl')},'All sixteen raw journals required')
     hashes={name:sha(comparison/name) for name in journal_names};close(summary['journal_files_sha256'],hashes,'raw journal hashes')
@@ -659,7 +843,7 @@ def validate_evidence(args):
     return rows,predictions,summary,released['temperature'],adapted['temperature'],dict(
         plan_sha256=PLAN_SHA256,independent_data_audit=data_audit,journal_files_sha256=hashes,
         evaluation_source=lock['evaluation_source'],training_source_commit=FROZEN_SOURCE,
-        completion_receipt_sha256=sha(receipt_path),runtime=summary['runtime'])
+        completion_receipt_sha256=sha(receipt_path),runtime=summary['runtime'],supplemental_provenance=supplemental)
 
 
 def run(args):
@@ -700,6 +884,7 @@ def main():
     for name in ('dataset','comparison','training-run','released-checkpoint','completion-receipt','expected-commit','output'):
         parser.add_argument('--'+name,required=True)
     parser.add_argument('--plan',default=str(PLAN))
+    parser.add_argument('--supplemental-request')
     try:run(parser.parse_args())
     except (KeyError,TypeError,OSError,json.JSONDecodeError) as error:
         raise ValueError('Missing or malformed independent replay evidence: '+str(error)) from error
