@@ -6,7 +6,9 @@ contract. **Production GPU/model execution and foreign-queue restoration remain
 unavailable.** No v8 training, inference, installation, borrowing, browser action
 or external trial took place.
 
-Operational source: `4b82f353d6278cc75033f4deefd2b3f98eaa8390`.
+Initial operational source: `4b82f353d6278cc75033f4deefd2b3f98eaa8390`.
+Corrected operational Source C: `86af19ed223323d937020fedf5cc3ef29c01ece0`; its separate
+[inventory](deadline-fix-source-manifest.json) preserves the historical Source A manifest.
 [Source manifest](source-manifest.json) binds ten Git blobs and explicitly grants
 no launch authority. The [implementation documentation](../../docs/frontier-v8-resource-episode.md)
 describes the interfaces and remaining deployment boundary. The original
@@ -16,7 +18,7 @@ No old controller, PID, consumed attempt, install or replay was restarted.
 
 ## Validation and limits
 
-The [final local regression](local-regression-final-r2.json) ran 93 focused
+The [initial Source A local regression](local-regression-final-r2.json) ran 93 focused
 checks: 78 passed and 15 Linux cases were skipped on macOS. The full repository
 ran 1,328 tests: 1,224 passed and 104 skipped, with no failures/errors. All ten
 source hashes matched before and after these tests. The intermediate 92/1,327
@@ -24,7 +26,7 @@ run remains [preserved](local-regression-intermediate-r1.json); the
 [amendment](root-regression-r1-history-amendment.json) explains the later backend
 fix and added test. These local results do not claim Linux lifecycle execution.
 
-Both source-head Ubuntu CI jobs, Python 3.10 and 3.14, succeeded: each ran
+Both initial Source A Ubuntu CI jobs, Python 3.10 and 3.14, succeeded: each ran
 1,328 tests with 1,238 passed and 90 skipped. All **15 named Linux lifecycle
 cases passed in each job**, including controller SIGKILL, catchable interruption,
 timeout, failed work, escaped descendants, owner loss and eight-process original
@@ -36,8 +38,8 @@ queues on GitHub, not MS GPU or xiaofan recovery.
 The first log checker assumed Python 3.14's method display inside parentheses.
 Python 3.10 prints only module/class there. That [checker finding](source-A-CI-log-checker-finding-r1.json)
 is preserved; the revised reader accepts both standard formats from the same
-once-downloaded logs. Source and CI were not rerun. Final report-head CI must
-also succeed before integration.
+once-downloaded logs. Source and CI were not rerun. All latest corrected report-head CI must succeed before integration.
+The subsequent first-report PR failure and its correction are recorded below.
 
 [Capture/recon review](independent-capture-recon-review-r2.json) passed 126 checks.
 [Episode review](independent-episode-review-r1.json) passed 82 checks. Independent
@@ -85,6 +87,50 @@ oracle-logit rows: four loads, two complete Cal fits, 20 heldout and two Cal
 journals. These are **CPU fixtures, not model predictions**. No real native
 tensors, gradients, ABI or runtime settings were observed. The production
 module factory and execution entrypoints still refuse before request reads.
+
+## Deadline classification correction
+
+The first report B's two push jobs passed, but its Python 3.14 PR job failed:
+[raw log](python-3.14-report-B-PR-failed.raw.log) records an expected
+`work_deadline` reason becoming `ownership_lost`. Python 3.10 was then
+[cancelled](python-3.10-report-B-PR-cancelled.raw.log). The exact
+[snapshot](report-B-CI-snapshot-r4.json), [finding](report-B-PR-CI-finding-r1.json)
+and original bytes are retained. No manual CI retry was requested.
+
+A [deterministic counterexample](deadline-classification-finding-r1.json)
+reproduced expiry between the guard's outer clock check and the owner's first
+or final clock check, plus expiry before launch. Source C changes only the
+episode and its tests: a typed expiry retains `work_deadline`; reversed/nonfinite
+clocks and genuine identity/source errors keep their original classifications.
+The 4,500/1,500-second bounds and cleanup, restoration and release algorithms
+are unchanged. [Independent delta review](independent-deadline-classification-review-r1.json)
+passed 82 checks. One new unittest covers six boundary subtests, using mocked
+process/tree/auditor inputs; it establishes classification, not live recovery.
+
+The existing 0.15-second Linux timeout begins before guard startup. A legitimate
+prelaunch expiry now requires exact `worker_not_started`, no worker identity
+and no stdout/stderr launch artifacts. An already launched worker still requires
+nonempty members and every pidfd exit before independent recovery/release.
+The renamed case's pass alone does not prove that job launched a worker.
+[The amendment](deadline-classification-amendment-r1.json) lists its current name
+and preserves this limitation. Other lifecycle cases retain their separate scope.
+
+[Corrected local regression](local-regression-deadline-fix-r3.json) passed
+79 of 94 focused tests (15 Linux skips) and 1,225 of 1,329 full tests
+(104 skips), with no failure/error. All ten source hashes were stable through
+that run. All four corrected Source C push/PR CI checks succeeded. Both
+push jobs, Python 3.10 and 3.14, ran 1,329 tests with 1,239 passed and 90 skipped;
+each passed all 15 currently named Linux lifecycle cases. The new deterministic
+unit method also passed; its six subcases are a source-derived count, not six
+separately named raw-log results. [Source C log proof](source-C-CI-named-Linux-proof-r2.json)
+binds [3.10](python-3.10-source-C.raw.log) and [3.14](python-3.14-source-C.raw.log).
+The renamed timeout case retains the prelaunch limitation stated above.
+
+The new unit method has a docstring, so verbose unittest prints its method name
+and docstring/result on separate lines. A [first checker finding](source-C-CI-log-checker-finding-r1.json)
+is preserved; the revised reader uses those original lines. No source/CI rerun
+or log redownload was performed. All latest final report-head CI checks must
+succeed before integration.
 
 ## Current node observations and next boundary
 
