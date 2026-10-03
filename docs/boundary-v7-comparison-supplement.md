@@ -8,7 +8,15 @@ Historical same-device runtime evidence and an independent CPU reproduction
 establish this guard defect; the failed v7 call did not persist its own runtime.
 No comparison scores or safety-gate result exist for that attempt.
 
-The separately declared `boundary-v7-comparison-s1-20261003` runs inference
+The first supplement, `boundary-v7-comparison-s1-20261003`, consumed two
+CPU preflights without reaching inference. Its source bundle omitted the
+separately frozen training commit; an objects-only continuation repaired that
+input, then the source-overlap check rejected the required nested checkout.
+Both failure logs and the original declaration are preserved in the
+[CPU failure report](../reports/boundary-v7-preflight-layout-20261003/README.md).
+S1 must not be executed again or have its inputs or logs overwritten.
+
+The separately declared `boundary-v7-comparison-s2-20261003` runs inference
 only, using the already completed checkpoint. It is an explicit supplemental
 evaluation, with a new source commit, task directory, resource acquisition,
 session, attempt lock and output directory. It does not retry training, resume
@@ -29,9 +37,9 @@ original evaluation `37729b2340e8d00fb211784d2181dd167db4f96b` remains intact.
 Dataset, published initializer, completed checkpoint, base snapshot, overlay,
 interpreter/package versions, BF16 base/FP32 head, physical GPU4, Calibration
 temperature, 904 rows per weight and all predeclared metrics/safety gates are
-unchanged. Only strict physical UUID representation and explicit supplemental
-provenance handling change. Complete UUIDs with an optional exact `GPU-`
-prefix and hexadecimal case variation denote the same device; different
+unchanged. Only strict physical UUID representation, explicit supplemental
+provenance handling and the exact source placement check change. Complete
+UUIDs with an optional exact `GPU-` prefix and hexadecimal case variation denote the same device; different
 UUIDs, MIG identifiers, ordinals and malformed identities are rejected.
 Raw runtime records are preserved, and `visible_devices` remains exact.
 
@@ -39,7 +47,18 @@ Raw runtime records are preserved, and `visible_devices` remains exact.
 
 After the new source is pushed, latest CI passes and integration completes,
 stage that exact source in a new task root outside the original task and
-immutable data. Preserve all original input paths, including the original
+immutable data. Its source must be the actual canonical directory
+`new-task/evaluation-source`, exactly alongside the request. A sibling, deeper
+checkout, task root or symlink to a foreign checkout is rejected. Bidirectional
+overlap with the original task, dataset or released checkpoint still rejects.
+
+The new deployment bundle must include the integrated evaluation commit and
+the separate frozen training commit `87eb8b419685d272f059b3696e0f547e47ebdcc6`.
+Before upload, clone the actual bundle in a fresh local directory, check out
+the declared evaluation commit and verify every current and frozen source
+blob required by the comparator. Verify the same objects remotely before
+preflight. An integrated squash history alone does not retain the frozen
+training commit. Preserve all original input paths, including the original
 `execution-request.json` and `completion-receipt.json`. Copy the immutable
 terminal controller/audit bytes to `original-recovery/` in the new task.
 
