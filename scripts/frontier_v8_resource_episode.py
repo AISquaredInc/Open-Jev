@@ -53,6 +53,10 @@ class EpisodeOwnershipError(ResourceEpisodeError):
     pass
 
 
+class EpisodeWorkDeadlineExceeded(EpisodeOwnershipError):
+    pass
+
+
 def _freeze(value):
     if isinstance(value, dict):
         return MappingProxyType({key: _freeze(item) for key, item in value.items()})
@@ -494,9 +498,10 @@ class ResourceEpisodeOwner:
 
     def _check_deadline(self):
         now = time.monotonic()
-        if (not math.isfinite(now) or now < self._manifest['work_started_monotonic']
-                or now >= self._manifest['work_deadline_monotonic']):
-            raise EpisodeOwnershipError('live owner work deadline has expired or its clock reversed')
+        if not math.isfinite(now) or now < self._manifest['work_started_monotonic']:
+            raise EpisodeOwnershipError('live owner clock is nonfinite or reversed')
+        if now >= self._manifest['work_deadline_monotonic']:
+            raise EpisodeWorkDeadlineExceeded('live owner work deadline has expired')
 
     def close(self):
         for key in ('_guard_fd', '_controller_fd'):
@@ -642,6 +647,9 @@ def _watchdog(declaration_path, channel_fd):
                 break
             try:
                 owner.assert_owned()
+            except EpisodeWorkDeadlineExceeded as error:
+                result['reason'], result['work_deadline_error'] = 'work_deadline', str(error)
+                break
             except EpisodeOwnershipError as error:
                 result['reason'], result['ownership_error'] = 'ownership_lost', str(error)
                 break
@@ -651,6 +659,8 @@ def _watchdog(declaration_path, channel_fd):
                     result['reason'] = 'descendant_outlived_worker'
                 break
             time.sleep(POLL_SECONDS)
+    except EpisodeWorkDeadlineExceeded as error:
+        result['reason'], result['work_deadline_error'] = 'work_deadline', str(error)
     except BaseException as error:
         result['error'] = str(error)
         result['reason'] = 'watchdog_error'

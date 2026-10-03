@@ -2,6 +2,7 @@
 from dataclasses import asdict, replace
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -314,6 +315,82 @@ class ResourceEpisodeUnitTests(unittest.TestCase):
                 os.close(write_fd)
                 os.close(worker_fd)
 
+    def test_owner_deadline_race_preserves_causal_failure_classification(self):
+        """Real owner/lease reads; process and independent audit are CPU mocks."""
+        cases = [('owner_first_check', 'work_deadline'), ('owner_final_check', 'work_deadline'),
+                 ('prelaunch_final_check', 'work_deadline'), ('reversed_clock', 'ownership_lost'),
+                 ('nonfinite_clock', 'ownership_lost'), ('identity_loss_past_deadline', 'ownership_lost')]
+        for boundary, expected_reason in cases:
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                controller = process.ProcessIdentity(BOOT, 90, os.getuid(), 100, 1, 90, 90)
+                guard = process.ProcessIdentity(BOOT, os.getpid(), os.getuid(), 101, 90, os.getpid(), os.getpid())
+                worker_identity = process.ProcessIdentity(BOOT, 91, os.getuid(), 102, guard.pid, 91, 91)
+                kernel = FakeKernel(root / 'proc', [controller, guard, worker_identity])
+                probe_path = root / 'gpu.json'
+                probe_path.write_text(json.dumps(gpu_fixture()))
+                spec = {'controller': asdict(controller), 'baseline': baseline_for(gpu_fixture()),
+                    'nonce': 'n' * 64, 'source_closure': episode._source_closure(),
+                    'lease_directory': str(root / 'leases'), 'restoration_spec': restoration_spec(probe_path),
+                    'gpu_probe_path': str(probe_path), 'gpu_indices': [2], 'borrow_originals': False,
+                    'original_fixture_nonce': None, 'work_started_monotonic': 0,
+                    'work_deadline_monotonic': 10, 'restoration_seconds': 2,
+                    'owner_binding': {}, 'argv': [sys.executable, '-c', 'pass']}
+                declaration = root / 'declaration.json'
+                declaration.write_text(json.dumps(spec))
+                worker_fd = kernel.open_bound(worker_identity)
+                tree = Mock(members={91: {'identity': worker_identity, 'fd': worker_fd}}, errors=[])
+                tree.quiesce.return_value = {'status': 'owned_cpu_worker_tree_quiescence_proven'}
+                worker = Mock(pid=91, returncode=0)
+                worker.poll.return_value = None
+                auditor = episode._auditor()
+                verification = {'status': 'same_process_resource_recovery_observed', 'failures': [],
+                    'queue_restore_proven': False, 'execution_available': False, 'resource_authority': False}
+                now, clock_sequence, probes = [0.0], [], []
+                raw_probe = episode._gpu_probe
+                def clock_read():
+                    if clock_sequence:
+                        now[0] = clock_sequence.pop(0)
+                    result = now[0]
+                    if not math.isfinite(result) or result < 0:
+                        now[0] = 0.0  # Recovery receives a valid clock in this classification fixture.
+                    return result
+                def discover():
+                    if boundary == 'owner_first_check':
+                        clock_sequence.extend([0.0, 10.0])  # Guard passes; owner's first check expires.
+                tree.discover.side_effect = discover
+                def crossing_probe(path):
+                    value = raw_probe(path)
+                    probes.append(path)
+                    target = 2 if boundary == 'prelaunch_final_check' else 3
+                    if len(probes) == target and boundary != 'owner_first_check':
+                        now[0] = -0.1 if boundary == 'reversed_clock' else (
+                            float('nan') if boundary == 'nonfinite_clock' else 10.0)
+                        if boundary == 'identity_loss_past_deadline':
+                            value['gpus'][0]['uuid'] = 'GPU-changed'
+                    return value
+                read_fd, write_fd = os.pipe()
+                try:
+                    with patch.object(process, '_require_linux'), patch.object(process, '_Kernel', return_value=kernel), patch.object(process, '_prctl'), patch.object(process, '_channel_state', side_effect=[b'S', None]), patch.object(process, '_OwnedTree', return_value=tree), patch.object(episode.subprocess, 'Popen', return_value=worker) as launch, patch.object(episode.time, 'monotonic', side_effect=clock_read), patch.object(episode, '_gpu_probe', side_effect=crossing_probe), patch.object(auditor, 'observe_restore', return_value={'scope': 'mocked_CPU_classification_fixture'}) as restore, patch.object(auditor, 'verify_restoration', return_value=verification), patch.object(episode.signal, 'signal'):
+                        receipt = episode._watchdog(declaration, read_fd)
+                    self.assertEqual(receipt['reason'], expected_reason, json.dumps(receipt))
+                    self.assertEqual(receipt['status'], 'cpu_resource_episode_failed')
+                    self.assertTrue(receipt['reservations_released'])
+                    self.assertEqual(restore.call_count, 1)
+                    if boundary == 'prelaunch_final_check':
+                        launch.assert_not_called()
+                    else:
+                        self.assertEqual(tree.quiesce.call_count, 1)
+                    if expected_reason == 'ownership_lost':
+                        self.assertIn('ownership_error', receipt)
+                        self.assertNotIn('work_deadline_error', receipt)
+                    else:
+                        self.assertIn('work_deadline_error', receipt)
+                        self.assertNotIn('ownership_error', receipt)
+                finally:
+                    os.close(write_fd)
+                    os.close(worker_fd)
+
     def test_originals_refuse_foreign_ancestry_nonce_and_birth(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
@@ -448,13 +525,22 @@ class ResourceEpisodeLinuxTests(unittest.TestCase):
         self.assertTrue(all(x['pidfd_exit_observed'] for x in members))
         self.assertIsNone(unrelated.poll())
 
-    def test_timeout_kills_only_new_tree_and_releases_after_independent_audit(self):
+    def test_timeout_fails_closed_before_launch_or_proves_new_tree_quiescence(self):
         with self.assertRaises(episode.ResourceEpisodeError) as failure:
             self.run_episode('import time;time.sleep(10)', timeout_seconds=0.15)
         self.assertEqual(failure.exception.receipt['reason'], 'work_deadline')
-        members = failure.exception.receipt['quiescence']['members']
-        self.assertTrue(members)
-        self.assertTrue(all(x['pidfd_exit_observed'] for x in members))
+        proof = failure.exception.receipt['quiescence']
+        if proof['status'] == 'worker_not_started':
+            # Controller startup consumes this same 0.15-second budget.
+            self.assertEqual(proof, {'status': 'worker_not_started'})
+            self.assertNotIn('worker', failure.exception.receipt)
+            self.assertNotIn('worker_identity', failure.exception.receipt)
+            for name in ('worker.stdout.log', 'worker.stderr.log'):
+                self.assertFalse((self.root / 'episode' / name).exists())
+        else:
+            self.assertEqual(proof['status'], 'owned_cpu_worker_tree_quiescence_proven')
+            self.assertTrue(proof['members'])
+            self.assertTrue(all(x['pidfd_exit_observed'] for x in proof['members']))
         self.assertTrue(failure.exception.receipt['reservations_released'])
 
     def test_lost_gpu_identity_never_releases_reservation(self):
