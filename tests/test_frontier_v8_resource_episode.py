@@ -319,7 +319,9 @@ class ResourceEpisodeUnitTests(unittest.TestCase):
         """Real owner/lease reads; process and independent audit are CPU mocks."""
         cases = [('owner_first_check', 'work_deadline'), ('owner_final_check', 'work_deadline'),
                  ('prelaunch_final_check', 'work_deadline'), ('reversed_clock', 'ownership_lost'),
-                 ('nonfinite_clock', 'ownership_lost'), ('identity_loss_past_deadline', 'ownership_lost')]
+                 ('nonfinite_clock', 'ownership_lost'), ('identity_loss_past_deadline', 'ownership_lost'),
+                 ('controller_loss_after_guard_precheck', 'controller_lost'),
+                 ('live_controller_identity_loss', 'ownership_lost')]
         for boundary, expected_reason in cases:
             with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
@@ -358,15 +360,24 @@ class ResourceEpisodeUnitTests(unittest.TestCase):
                 def discover():
                     if boundary == 'owner_first_check':
                         clock_sequence.extend([0.0, 10.0])  # Guard passes; owner's first check expires.
+                    elif boundary == 'controller_loss_after_guard_precheck':
+                        original_exited = kernel.exited
+                        def exit_after_precheck(fd):
+                            exited = original_exited(fd)
+                            if kernel.fds[fd] == controller.pid:
+                                kernel.exits.add(controller.pid)  # After the guard reads False, before owner checks.
+                            return exited
+                        kernel.exited = exit_after_precheck
                 tree.discover.side_effect = discover
                 def crossing_probe(path):
                     value = raw_probe(path)
                     probes.append(path)
                     target = 2 if boundary == 'prelaunch_final_check' else 3
                     if len(probes) == target and boundary != 'owner_first_check':
-                        now[0] = -0.1 if boundary == 'reversed_clock' else (
-                            float('nan') if boundary == 'nonfinite_clock' else 10.0)
-                        if boundary == 'identity_loss_past_deadline':
+                        if boundary != 'live_controller_identity_loss':
+                            now[0] = -0.1 if boundary == 'reversed_clock' else (
+                                float('nan') if boundary == 'nonfinite_clock' else 10.0)
+                        if boundary in ('identity_loss_past_deadline', 'live_controller_identity_loss'):
                             value['gpus'][0]['uuid'] = 'GPU-changed'
                     return value
                 read_fd, write_fd = os.pipe()
@@ -381,9 +392,10 @@ class ResourceEpisodeUnitTests(unittest.TestCase):
                         launch.assert_not_called()
                     else:
                         self.assertEqual(tree.quiesce.call_count, 1)
-                    if expected_reason == 'ownership_lost':
+                    if expected_reason in ('ownership_lost', 'controller_lost'):
                         self.assertIn('ownership_error', receipt)
                         self.assertNotIn('work_deadline_error', receipt)
+                        self.assertEqual(controller.pid in kernel.exits, expected_reason == 'controller_lost')
                     else:
                         self.assertIn('work_deadline_error', receipt)
                         self.assertNotIn('ownership_error', receipt)
