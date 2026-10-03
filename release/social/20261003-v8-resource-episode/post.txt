@@ -1,0 +1,7 @@
+Open-Jev v8 resource controls 🛠️
+
+Added capture, lease checks and independent recovery auditing, verified in 15 Linux CPU lifecycle cases.
+
+GPU training and real-queue recovery remain blocked.
+
+https://github.com/Zefan-Cai/Open-Jev/blob/4b82f353d6278cc75033f4deefd2b3f98eaa8390/docs/frontier-v8-resource-episode.md
