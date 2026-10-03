@@ -651,7 +651,9 @@ def _watchdog(declaration_path, channel_fd):
                 result['reason'], result['work_deadline_error'] = 'work_deadline', str(error)
                 break
             except EpisodeOwnershipError as error:
-                result['reason'], result['ownership_error'] = 'ownership_lost', str(error)
+                result['ownership_error'] = str(error)
+                # Controller exit can cross the earlier pidfd check and owner validation.
+                result['reason'] = 'controller_lost' if kernel.exited(controller_fd) else 'ownership_lost'
                 break
             if worker.poll() is not None:
                 result['reason'] = 'worker_complete' if worker.returncode == 0 else 'worker_failed'
