@@ -707,6 +707,17 @@ class RuntimeTransportTests(unittest.TestCase):
                 root = Path(temp).resolve()
                 process = root / 'source-preparation/process-r1'
                 process.mkdir(parents=True)
+                if outcome == 'success':
+                    original_lstat = Path.lstat
+                    def foreign_parent_lstat(path):
+                        actual = original_lstat(path)
+                        if path == root.parent:
+                            return SimpleNamespace(st_mode=actual.st_mode,
+                                st_uid=0 if os.getuid() else 1)
+                        return actual
+                    with patch.object(Path, 'lstat', new=foreign_parent_lstat):
+                        with self.assertRaisesRegex(ValueError, 'directory owner differs'):
+                            transport._owned_directory(root, owner_start=root.parent)
                 bodies = {role: ('fake ' + role + ' source\n').encode()
                           for role in ('scientific', 'native', 'operational')}
                 roots = {role: {'commit': str(index + 1) * 40,
@@ -745,7 +756,7 @@ class RuntimeTransportTests(unittest.TestCase):
                 old_fstat, old_lseek = os.fstat, os.lseek
                 with (process / 'worker.stdout.log').open('w+') as out, (process / 'worker.stderr.log').open('w+') as err:
                     descriptors = {1: out.fileno(), 2: err.fileno()}
-                    with (patch.object(transport, 'USER_ROOT', root.parent),
+                    with (patch.object(transport, 'USER_ROOT', root),
                         patch.dict(os.environ, {transport.NONCE_KEY: 'a' * 64, 'SECRET_FIXTURE': 'never inherited'}),
                         patch.object(transport.subprocess, 'run', side_effect=fake_git),
                         patch.object(transport.os, 'fstat', side_effect=lambda fd: old_fstat(descriptors.get(fd, fd))),
