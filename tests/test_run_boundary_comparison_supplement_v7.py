@@ -13,9 +13,10 @@ from scripts import run_boundary_comparison_supplement_v7 as supplement
 class ComparisonSupplementTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(); self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()
         self.old, self.new = self.root/'original', self.root/'supplement'
         self.old.mkdir(); self.new.mkdir()
+        self.source = self.new/'evaluation-source'; self.source.mkdir()
         self.declaration = self.root/'declaration.json'
         self.request_path = self.new/'comparison-supplement-request.json'
         self.receipt = dict(gpu_uuid='GPU-8e9ce19f-1174-0848-8e17-3201e3bb8775',
@@ -66,6 +67,7 @@ class ComparisonSupplementTests(unittest.TestCase):
             **{key:self.original[key] for key in ('dataset','released_checkpoint','training_run','completion_receipt')})
         self.addCleanup(patch.stopall)
         patch.object(supplement,'DECLARATION',self.declaration).start()
+        patch.object(supplement,'ROOT',self.source).start()
 
     @staticmethod
     def write(path,value):
@@ -119,6 +121,46 @@ class ComparisonSupplementTests(unittest.TestCase):
         self.assertEqual(inventory,{str(p):p.read_bytes() for p in self.old.rglob('*') if p.is_file()})
         self.assertFalse((self.new/'comparison').exists())
 
+    def test_source_requires_exact_canonical_nested_layout(self):
+        for source in (self.root/'evaluation-source', self.new/'source',
+                       self.source/'nested', self.new):
+            source.mkdir(exist_ok=True)
+            with self.subTest(source=source),patch.object(supplement,'ROOT',source),\
+                    self.assertRaisesRegex(ValueError,'canonical evaluation-source'):
+                self.validate()
+
+    def test_source_symlink_and_resolved_external_target_rejected(self):
+        self.source.rmdir()
+        target=self.root/'external-source';target.mkdir()
+        self.source.symlink_to(target,target_is_directory=True)
+        for source in (self.source,self.source.resolve()):
+            with self.subTest(source=source),patch.object(supplement,'ROOT',source),\
+                    self.assertRaisesRegex(ValueError,'canonical evaluation-source'):
+                self.validate()
+
+    def test_new_task_disjoint_from_original_task_dataset_and_checkpoint(self):
+        request,original,receipt=map(copy.deepcopy,(self.request,self.original,self.receipt))
+        for key in ('original_task','dataset','released_checkpoint'):
+            for old in (self.new,self.new/'old-input',self.new.parent):
+                self.request=copy.deepcopy(request);self.original=copy.deepcopy(original)
+                self.receipt=copy.deepcopy(receipt)
+                if key == 'original_task':
+                    self.request[key]=str(old)
+                    self.receipt['execution_request_path']=str(old/'execution-request.json')
+                    value=str(old/'completion-receipt.json')
+                    self.request['completion_receipt']=self.original['completion_receipt']=value
+                    args_key='completion_receipt'
+                else:
+                    value=str(old);args_key=key
+                    self.request[key]=self.original[key]=value
+                self.seal()
+                with self.subTest(key=key,old=old),patch.object(self.args,args_key,value),\
+                        self.assertRaisesRegex(ValueError,'overlaps original evidence or inputs'):
+                    self.validate()
+        self.request,self.original,self.receipt=request,original,receipt
+        self.seal()
+        self.validate()
+
     def test_origin_bytes_or_extra_predictions_fail(self):
         for name in ('execution-request.json','completion-receipt.json','experiment-completion.json','comparison.log','comparison/comparison.lock.json'):
             path=self.old/name;raw=path.read_bytes();path.write_bytes(raw+b' ')
@@ -153,6 +195,12 @@ class ComparisonSupplementTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'declaration'):self.validate()
         self.seal();self.public['origin']['evaluation_commit']='c'*40;self.seal()
         with self.assertRaisesRegex(ValueError,'evaluation'):self.validate()
+
+    def test_consumed_s1_identity_cannot_be_reused_for_new_supplement(self):
+        self.request['supplement_id']=self.public['supplement_id']='boundary-v7-comparison-s1-20261003'
+        self.seal()
+        with self.assertRaisesRegex(ValueError,'Unknown comparison-only declaration/request'):
+            self.validate()
 
     def test_launch_requires_current_process_new_session_lock_and_live_resource(self):
         provenance=self.validate();pid=4321

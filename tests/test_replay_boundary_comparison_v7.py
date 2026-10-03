@@ -435,7 +435,7 @@ class IndependentSupplementProvenanceTests(unittest.TestCase):
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
-        self.base = Path(self.temporary.name).resolve();self.root = self.base/'code';self.old = self.base/'original';self.new = self.base/'supplement'
+        self.base = Path(self.temporary.name).resolve();self.old = self.base/'original';self.new = self.base/'supplement';self.root = self.new/'evaluation-source'
         self.root_patch = patch.object(replay, 'ROOT', self.root);self.root_patch.start();self.addCleanup(self.root_patch.stop)
         self.request_path = self.new/'comparison-supplement-request.json'
         self.declaration_path = self.root/replay.SUPPLEMENT_FILES[2]
@@ -443,7 +443,7 @@ class IndependentSupplementProvenanceTests(unittest.TestCase):
         self.audit_path = self.new/'original-recovery/restoration.json'
         self.runner_path = self.root/replay.SUPPLEMENT_FILES[0]
         self.runner_path.parent.mkdir(parents=True);self.runner_path.write_bytes(b'CPU provenance fixture runner; never executed\n')
-        self.new.mkdir(parents=True);(self.new/'pause_v7_comparison_restore.py').write_bytes(b'CPU controller fixture; never executed\n')
+        self.new.mkdir(parents=True, exist_ok=True);(self.new/'pause_v7_comparison_restore.py').write_bytes(b'CPU controller fixture; never executed\n')
         self.runtime = dict(torch='2.8.0', transformers='5.10.2', peft='0.19.1', triton='3.4.0', safetensors='0.7.0', accelerate='1.13.0')
         self.original = dict(evaluation_commit=replay.ORIGINAL_EVALUATION, plan_sha256=replay.PLAN_SHA256,
             dataset=str(self.old/'data'), released_checkpoint=str(self.old/'released'), training_run=str(self.old/'adaptation'),
@@ -543,11 +543,59 @@ class IndependentSupplementProvenanceTests(unittest.TestCase):
 
     def test_complete_offline_provenance_replays_without_live_processes_or_rewriting_origin(self):
         before = replay.file_inventory(self.old)
+        self.assertEqual(replay.ROOT.resolve(),self.request_path.parent/'evaluation-source')
         with patch.object(replay.subprocess,'check_output',side_effect=AssertionError('No live subprocess')):
             result = self.validate()
         self.assertEqual(result['original_evaluation_commit'],replay.ORIGINAL_EVALUATION)
         self.assertEqual(result['training_calls'],0);self.assertEqual(replay.file_inventory(self.old),before)
         self.assertEqual(result['resource']['resource'],self.resource)
+
+    def test_foreign_source_checkout_cannot_replace_exact_nested_evaluation_source(self):
+        declaration = self.declaration_path.read_bytes()
+        for root in (self.base/'foreign-source', self.new/'source', self.root/'nested', self.new, self.base):
+            path = root/replay.SUPPLEMENT_FILES[2];path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(declaration)
+            with self.subTest(root=root),patch.object(replay,'ROOT',root):
+                with self.assertRaisesRegex(ValueError,'exact evaluation-source checkout'):
+                    self.validate()
+
+    def test_nested_source_symlink_cannot_escape_to_foreign_checkout(self):
+        foreign = self.base/'foreign-source';self.root.rename(foreign)
+        self.root.symlink_to(foreign,target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'exact evaluation-source checkout'):
+            self.validate()
+
+    def test_nested_task_still_rejects_both_directions_of_preserved_evidence_overlap(self):
+        cases = [('original_task','below'),('original_task','contains'),('original_task','same'),
+                 ('dataset','below'),('dataset','contains'),('dataset','same'),
+                 ('released_checkpoint','below'),('released_checkpoint','contains'),('released_checkpoint','same')]
+        for key,direction in cases:
+            fixture = IndependentSupplementProvenanceTests('test_complete_offline_provenance_replays_without_live_processes_or_rewriting_origin')
+            fixture.setUp()
+            try:
+                if key == 'original_task':
+                    fixture.old = fixture.base if direction == 'contains' else fixture.new if direction == 'same' else fixture.new/'original'
+                    fixture.original['comparison_output'] = str(fixture.old/'comparison')
+                    fixture.receipt['execution_request_path'] = str(fixture.old/'execution-request.json')
+                    fixture.request['original_task'] = str(fixture.old)
+                    for name,relative in [('dataset','data'),('released_checkpoint','released'),('training_run','adaptation'),('completion_receipt','completion-receipt.json')]:
+                        value = str(fixture.old/relative)
+                        fixture.original[name] = fixture.request[name] = value;setattr(fixture.args,name,value)
+                else:
+                    target = fixture.base if direction == 'contains' else fixture.new if direction == 'same' else fixture.new/'retained-input'
+                    fixture.original[key] = fixture.request[key] = str(target);setattr(fixture.args,key,str(target))
+                fixture.rebind();before = replay.file_inventory(fixture.old)
+                with self.subTest(key=key,direction=direction),self.assertRaisesRegex(ValueError,'overlaps preserved evidence/source'):
+                    fixture.validate()
+                self.assertEqual(replay.file_inventory(fixture.old),before)
+            finally:
+                fixture.doCleanups()
+
+    def test_consumed_s1_identity_cannot_be_reused_for_new_supplement(self):
+        for record in (self.request,self.declaration,self.plan,self.resource):
+            record['supplement_id'] = 'boundary-v7-comparison-s1-20261003'
+        self.rebind()
+        with self.assertRaisesRegex(ValueError,'Unknown comparison-only supplement declaration'):
+            self.validate()
 
     def test_optional_cli_and_locked_provenance_cannot_bypass_ordinary_binding(self):
         lock = {'inputs':{}}

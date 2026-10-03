@@ -26,7 +26,7 @@ SOURCES = dict(v4='frontier-controls-v4',v5='temporal-windows-v5',
 MIXTURE_COUNTS = dict(train=3792,calibration=436,validation=436,test=256,ood=256)
 RELEASED_TEMPERATURE = 1.518796342858676
 ORIGINAL_EVALUATION = '37729b2340e8d00fb211784d2181dd167db4f96b'
-SUPPLEMENT_ID = 'boundary-v7-comparison-s1-20261003'
+SUPPLEMENT_ID = 'boundary-v7-comparison-s2-20261003'
 SUPPLEMENT_FILES = ('scripts/run_boundary_comparison_supplement_v7.py',
     'docs/boundary-v7-comparison-supplement.md', 'reports/boundary-v7-forensic-comparison-20261003/declaration.json')
 
@@ -590,7 +590,8 @@ def validate_supplemental_provenance(args,lock,receipt,original_request):
         and Path(request['resource_receipt']).resolve() == path.parent/'resource-ready.json'
         and Path(request['controller_plan']).resolve() == path.parent/'controller-plan.json',
         'Supplement output/resource must belong to its new task')
-    for old in (task,ROOT.resolve(),Path(args.dataset).resolve(),Path(args.released_checkpoint).resolve()):
+    require(ROOT.resolve() == path.parent/'evaluation-source', 'Supplement requires its own exact evaluation-source checkout')
+    for old in (task,Path(args.dataset).resolve(),Path(args.released_checkpoint).resolve()):
         require(not path.parent.is_relative_to(old) and not old.is_relative_to(path.parent), 'Supplement overlaps preserved evidence/source')
     for key in ('original_task','original_controller_receipt','original_restoration_audit','dataset','released_checkpoint',
                 'training_run','completion_receipt','comparison_output','resource_receipt','controller_plan'):

@@ -12,7 +12,7 @@ from scripts.run_boundary_training_v7 import RUNTIME_NAMES, SOURCE_COMMIT, file_
 ROOT = Path(__file__).resolve().parents[1]
 DECLARATION = ROOT/'reports/boundary-v7-forensic-comparison-20261003/declaration.json'
 KIND = 'v7_comparison_only_supplement'
-SUPPLEMENT_ID = 'boundary-v7-comparison-s1-20261003'
+SUPPLEMENT_ID = 'boundary-v7-comparison-s2-20261003'
 ORIGINAL_EVALUATION = '37729b2340e8d00fb211784d2181dd167db4f96b'
 RESTORED = 'verified_optimizer_sampler_tree_four_ranks_and_real_completions'
 
@@ -68,9 +68,11 @@ def validate_supplement(args, receipt, original_request, output):
             and Path(request['resource_receipt']).resolve() == path.parent/'resource-ready.json'
             and Path(request['controller_plan']).resolve() == path.parent/'controller-plan.json',
             'Supplement outputs/resources must use its new task root')
-    for old in (task, ROOT, Path(args.dataset).resolve(), Path(args.released_checkpoint).resolve()):
+    require(ROOT.is_dir() and ROOT == ROOT.resolve() == path.parent/'evaluation-source',
+            'Supplement source must be its canonical evaluation-source directory')
+    for old in (task, Path(args.dataset).resolve(), Path(args.released_checkpoint).resolve()):
         require(not path.parent.is_relative_to(old) and not old.is_relative_to(path.parent),
-                'Supplement task overlaps original evidence or source')
+                'Supplement task overlaps original evidence or inputs')
     for key in ('original_task', 'original_controller_receipt', 'original_restoration_audit',
                 'dataset', 'released_checkpoint', 'training_run', 'completion_receipt',
                 'comparison_output', 'resource_receipt', 'controller_plan'):
