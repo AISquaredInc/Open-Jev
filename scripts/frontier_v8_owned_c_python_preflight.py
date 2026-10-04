@@ -46,6 +46,16 @@ def digest(body):
     return hashlib.sha256(body).hexdigest()
 
 
+def parse_python_interpreter(body, linkage):
+    """Describe an actual bounded header view; full file binding stays separate."""
+    require(type(body) is bytes and 64 <= len(body) <= MAX_INTERPRETER,
+            'Bounded complete captured Python ELF required')
+    view = body[:MAX_BYTES]
+    return {**linkage.parse_elf_product(view), 'captured_bytes': len(body),
+            'captured_sha256': digest(body), 'header_view_bytes': len(view),
+            'header_view_sha256': digest(view)}
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -748,7 +758,9 @@ def run_fixture(request_path, expected_sha256, backend, utility, linkage,
         interpreter, interpreter_identity = helper.read_regular(str(interpreter_path), MAX_INTERPRETER)
         require(digest(interpreter) == request['runtime']['interpreter']['sha256']
                 and interpreter_identity[2] & 0o111, 'Exact executable Python ELF required')
-        result['python_interpreter'] = linkage.parse_elf_product(interpreter)
+        result['python_interpreter'] = parse_python_interpreter(interpreter, linkage)
+        require(result['python_interpreter']['captured_sha256'] == request['runtime']['interpreter']['sha256'],
+                'Full captured Python ELF descriptor hash differs')
         lock_path = absolute_path(request['lock']['path'])
         lock_body, lock_identity = helper.read_regular(str(lock_path), 65536)
         require(digest(lock_body) == LOCK_SHA, 'Frozen lock bytes differ')

@@ -37,6 +37,24 @@ resource authority. New compiler, header, CPP, object, product and postlink
 linkage facts describe their newly observed inputs. Postlink snapshots do not
 authenticate all bytes throughout linking or all mapped code.
 
+The observer captures the entire declared Python interpreter file, at most
+64 MiB, with its full byte count, SHA256 and file identity. Its ELF descriptor
+adapter gives the unchanged pinned parser only the actual first
+`min(full length, 8 MiB)` bytes. The returned `captured_bytes` and
+`captured_sha256` describe the full capture; `header_view_bytes` and
+`header_view_sha256` describe that actual prefix. The full hash must still match
+the exact request before build/runtime, and full bytes/identity remain bound by
+the input rechecks. A change after the prefix can retain its view hash while
+failing the full binding. Headers, the complete program table and the single
+PT_INTERP path must fit inside the actual view; there is no reconstructed
+padding, clipped offset, second parser or fallback outside it.
+
+The Python PT_INTERP pathname is descriptive. The guardian's separate canonical
+loader and linkage observations do not independently authenticate that Python
+loader or its mapped payload. Full captured file hashing and synthetic ELF
+fixtures do not establish loading, complete segments/mapped code, Python
+runtime ABI or fresh host applicability.
+
 ## Python handoff and startup
 
 G opens the newly bound interpreter, worker and request as readonly inputs.
@@ -161,6 +179,9 @@ isolates semantic failures from framing failures. These illustrative rows use
 synthetic PIDs, calls, scalar values and clocks; only their temporary metadata
 tree supplies filesystem observations. They are not native output or ABI
 evidence and require no relaunch.
+Additional synthetic descriptor fixtures cover all four declared ELF class/
+endianness pairs, full/view hash separation, trailing full-file drift before
+build, and malformed bounds/table/PT_INTERP cases without executing those bytes.
 Negative parser fixtures also preserve an explicit failed close and the
 subsequent actual-format badfd fact. A failed close is not rewritten as success
 or discarded; its closed first-error record and partial evidence remain

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import struct
 import sys
 import sysconfig
 import tempfile
@@ -29,6 +30,29 @@ PACKAGES = ('torch', 'transformers', 'peft', 'triton', 'safetensors', 'accelerat
 
 def encoded(row):
     return json.dumps(row, sort_keys=True, separators=(',', ':')).encode()
+
+
+def synthetic_python_elf(elf_class=2, data_encoding=1, *, size=512,
+                         path=b'/lib/synthetic-loader.so\0', phnum=1):
+    """Illustrative ELF descriptors only; these bytes are never executed."""
+    order = '<' if data_encoding == 1 else '>'
+    ehsize, phsize = (52, 32) if elf_class == 1 else (64, 56)
+    body = bytearray(max(size, ehsize + phsize * phnum, 256 + len(path)))
+    body[:7] = b'\x7fELF' + bytes((elf_class, data_encoding, 1))
+    struct.pack_into(order + 'HHI', body, 16, 3, 513, 1)
+    struct.pack_into(order + ('I' if elf_class == 1 else 'Q'), body,
+                     28 if elf_class == 1 else 32, ehsize)
+    struct.pack_into(order + 'HHH', body, 40 if elf_class == 1 else 52,
+                     ehsize, phsize, phnum)
+    for index in range(phnum):
+        start = ehsize + index * phsize
+        struct.pack_into(order + 'I', body, start, 3)
+        struct.pack_into(order + ('I' if elf_class == 1 else 'Q'), body,
+                         start + (4 if elf_class == 1 else 8), 256)
+        struct.pack_into(order + ('I' if elf_class == 1 else 'Q'), body,
+                         start + (16 if elf_class == 1 else 32), len(path))
+    body[256:256 + len(path)] = path
+    return bytes(body)
 
 
 def source_hashes(actual=False):
@@ -333,6 +357,127 @@ class PythonPreflightTests(unittest.TestCase):
     def assert_no_authority(self, row):
         for key in observer.AUTHORITY:
             self.assertIs(row[key], False, key)
+
+    def test_python_interpreter_header_view_preserves_four_class_endian_descriptors_and_full_hash(self):
+        _, _, linkage = observer.load_utilities()
+        for elf_class in (1, 2):
+            for data_encoding in (1, 2):
+                with self.subTest(elf_class=elf_class, data_encoding=data_encoding):
+                    small = synthetic_python_elf(elf_class, data_encoding)
+                    original = linkage.parse_elf_product(small)
+                    full = small + b'x' * (observer.MAX_BYTES + 17 - len(small))
+                    parsed = observer.parse_python_interpreter(full, linkage)
+                    self.assertEqual(set(parsed), set(original) | {
+                        'captured_bytes', 'captured_sha256', 'header_view_bytes', 'header_view_sha256'})
+                    self.assertEqual({key: parsed[key] for key in original}, original)
+                    self.assertEqual(parsed['captured_bytes'], len(full))
+                    self.assertEqual(parsed['captured_sha256'], observer.digest(full))
+                    self.assertEqual(parsed['header_view_bytes'], observer.MAX_BYTES)
+                    self.assertEqual(parsed['header_view_sha256'], observer.digest(full[:observer.MAX_BYTES]))
+                    self.assertNotEqual(parsed['captured_sha256'], parsed['header_view_sha256'])
+                    small_parsed = observer.parse_python_interpreter(small, linkage)
+                    self.assertEqual(small_parsed['captured_bytes'], len(small))
+                    self.assertEqual(small_parsed['header_view_bytes'], len(small))
+                    self.assertEqual(small_parsed['captured_sha256'], small_parsed['header_view_sha256'])
+
+    def test_python_interpreter_trailing_changes_keep_view_hash_and_change_full_hash(self):
+        _, _, linkage = observer.load_utilities()
+        prefix = synthetic_python_elf(size=observer.MAX_BYTES)
+        first = observer.parse_python_interpreter(prefix + b'a', linkage)
+        second = observer.parse_python_interpreter(prefix + b'b', linkage)
+        self.assertEqual(first['header_view_sha256'], second['header_view_sha256'])
+        self.assertEqual(first['header_view_bytes'], second['header_view_bytes'])
+        self.assertEqual(first['captured_bytes'], second['captured_bytes'])
+        self.assertNotEqual(first['captured_sha256'], second['captured_sha256'])
+
+    def test_python_interpreter_header_view_rejects_full_cap_type_and_malformed_headers(self):
+        _, _, linkage = observer.load_utilities()
+        valid = synthetic_python_elf()
+        for body in (bytearray(valid), memoryview(valid), None, valid[:63],
+                     valid + b'x' * (observer.MAX_INTERPRETER + 1 - len(valid))):
+            with self.subTest(input_type=type(body).__name__, length=len(body) if body is not None else None), \
+                    self.assertRaises(ValueError):
+                observer.parse_python_interpreter(body, linkage)
+        for label, offset, fmt, value in (
+            ('ident_magic', 0, 'I', 0), ('ident_class', 4, 'B', 3),
+            ('ident_encoding', 5, 'B', 3), ('ident_version', 6, 'B', 0),
+            ('ELF_type', 16, 'H', 1), ('ELF_version', 20, 'I', 0),
+            ('header_size', 52, 'H', 52), ('ph_size', 54, 'H', 32),
+            ('ph_count_zero', 56, 'H', 0), ('ph_count_over_cap', 56, 'H', 129),
+            ('ph_before_header', 32, 'Q', 63), ('overflow_like_phoff', 32, 'Q', (1 << 64) - 1)):
+            bad = bytearray(valid)
+            struct.pack_into('<' + fmt, bad, offset, value)
+            with self.subTest(fault=label), self.assertRaises(ValueError):
+                observer.parse_python_interpreter(bytes(bad), linkage)
+        with self.assertRaises(ValueError):
+            observer.parse_python_interpreter(valid[:64], linkage)
+
+    def test_python_interpreter_tables_and_PT_INTERP_must_fit_actual_prefix_without_fallback(self):
+        _, _, linkage = observer.load_utilities()
+        full = synthetic_python_elf(size=observer.MAX_BYTES + 4096)
+        for fault in ('table_outside', 'table_crosses', 'segment_outside', 'segment_crosses', 'segment_overflow'):
+            bad = bytearray(full)
+            if fault.startswith('table'):
+                target = observer.MAX_BYTES + 64 if fault == 'table_outside' else observer.MAX_BYTES - 55
+                bad[target:target + 56] = bad[64:120]
+                struct.pack_into('<Q', bad, 32, target)
+            else:
+                target = ((1 << 64) - 1 if fault == 'segment_overflow' else
+                          observer.MAX_BYTES + 64 if fault == 'segment_outside' else observer.MAX_BYTES - 1)
+                if target < len(bad):
+                    path = b'/lib/synthetic-loader.so\0'
+                    bad[target:target + len(path)] = path
+                struct.pack_into('<Q', bad, 72, target)
+            with self.subTest(fault=fault), self.assertRaises(ValueError):
+                observer.parse_python_interpreter(bytes(bad), linkage)
+
+    def test_python_interpreter_PT_INTERP_requires_unique_terminated_nonvirtual_absolute_path(self):
+        _, _, linkage = observer.load_utilities()
+        duplicate = synthetic_python_elf(phnum=2)
+        absent = bytearray(synthetic_python_elf())
+        struct.pack_into('<I', absent, 64, 1)
+        for label, body in [('duplicate', duplicate), ('absent', bytes(absent))] + [
+            (repr(path), synthetic_python_elf(path=path)) for path in (
+                b'/lib/unterminated.so', b'/lib/interior\0nul.so\0', b'/lib/nonascii\xff.so\0',
+                b'relative-loader.so\0', b'/lib/../loader.so\0', b'/lib//loader.so\0',
+                b'/proc/self/fd/3\0', b'/sys/loader.so\0', b'/dev/loader.so\0', b'/\0',
+                b'/lib/' + b'x' * 4096 + b'\0')]:
+            with self.subTest(fault=label), self.assertRaises(ValueError):
+                observer.parse_python_interpreter(body, linkage)
+
+    def test_python_interpreter_actual_trailing_full_hash_drift_stops_before_build_or_runtime(self):
+        helper, utility, linkage = observer.load_utilities()
+        with SyntheticSite() as site:
+            # A temporary synthetic executable-mode file, never a launched product.
+            site.interpreter = site.root / 'synthetic-python-ELF'
+            body = synthetic_python_elf(size=observer.MAX_BYTES + 17)
+            site.interpreter.write_bytes(body)
+            site.interpreter.chmod(0o700)
+            site.alias.unlink()
+            site.alias.symlink_to(site.interpreter)
+            request_path, request_sha, request = site.fixture_request('normal', BOOT)
+            with site.interpreter.open('r+b') as stream:
+                stream.seek(-1, os.SEEK_END)
+                stream.write(b'x')
+            changed = site.interpreter.read_bytes()
+            self.assertEqual(observer.digest(body[:observer.MAX_BYTES]), observer.digest(changed[:observer.MAX_BYTES]))
+            self.assertNotEqual(request['runtime']['interpreter']['sha256'], observer.digest(changed))
+            attempt = Path(request['attempt_directory'])
+            fd = os.open(attempt, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                backend = utility.CompilerBackend(helper, attempt, fd)
+                with patch.object(observer, 'build_product') as build, patch.object(observer, 'run_runtime') as runtime:
+                    result = observer.run_fixture(request_path, request_sha, backend,
+                        utility, linkage, os.getpid(), os.getuid(), BOOT)
+                    build.assert_not_called()
+                    runtime.assert_not_called()
+                self.assertEqual(result['status'], 'failed')
+                self.assertEqual(result['error']['message'], 'Exact executable Python ELF required')
+                self.assertEqual(result['runtime_attempts'], 0)
+                self.assertFalse(any(result[name] for name in observer.SUCCESS))
+                self.assert_no_authority(result)
+            finally:
+                os.close(fd)
 
     def test_real_request_is_closed_exact_pinned_and_fixture_route_is_refused(self):
         row = live_request()
