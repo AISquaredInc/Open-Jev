@@ -669,6 +669,52 @@ class PythonPreflightTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     observer.captured_regular(path, 5)
 
+    def test_captured_pure_utility_tuple_bindings_match_reads_and_stat_drift_stops_before_build(self):
+        helper, utility, linkage = observer.load_utilities()
+        for module in (helper, utility, linkage):
+            with self.subTest(utility=Path(module.__file__).name):
+                raw, info = helper.read_regular(module.__file__, observer.MAX_SOURCE)
+                self.assertIs(type(info), tuple)
+                self.assertIs(type(module._captured_identity), tuple)
+                self.assertEqual((raw, info), (module._captured_bytes, module._captured_identity))
+                selected = [info[index] for index in (0, 1, 2, 4, 5, 6)]
+                self.assertEqual(observer.product_tuple(info), selected)
+                self.assertEqual(observer.product_tuple(list(info)), selected)
+
+        with SyntheticSite() as site:
+            request_path, request_sha, request = site.fixture_request('normal', BOOT)
+            attempt = Path(request['attempt_directory'])
+            fd = os.open(attempt, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            backend = utility.CompilerBackend(helper, attempt, fd)
+            original_read = helper.read_regular
+            try:
+                for module, index in ((helper, 1), (utility, 5), (linkage, 4)):
+                    with self.subTest(changed_utility=Path(module.__file__).name):
+                        def changed_stat(path, limit, *, owner=None):
+                            raw, info = original_read(path, limit, owner=owner)
+                            if str(path) == module.__file__:
+                                changed = list(info)
+                                changed[index] += 1
+                                info = tuple(changed)
+                            return raw, info
+                        # Simulated identity drift retains actual captured bytes;
+                        # no pinned utility file, process or native API is changed.
+                        with patch.object(helper, 'read_regular', side_effect=changed_stat), \
+                                patch.object(observer, 'build_product') as build, \
+                                patch.object(observer, 'run_runtime') as runtime:
+                            result = observer.run_fixture(request_path, request_sha, backend,
+                                utility, linkage, os.getpid(), os.getuid(), BOOT)
+                            build.assert_not_called()
+                            runtime.assert_not_called()
+                        self.assertEqual(result['status'], 'failed')
+                        self.assertEqual(result['runtime_attempts'], 0)
+                        self.assertFalse(result['runtime_returned_complete_facts'])
+                        self.assertEqual(result['error']['message'], 'Captured utility bytes/identity drift')
+                        self.assertFalse(any(result[name] for name in observer.SUCCESS))
+                        self.assert_no_authority(result)
+            finally:
+                os.close(fd)
+
     def parse_native(self, fixture, row=None):
         original, command, cpp, request, bindings = fixture
         return observer.parse_runtime(encoded(original if row is None else row),

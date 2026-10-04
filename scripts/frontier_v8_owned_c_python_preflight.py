@@ -124,7 +124,7 @@ def load_utilities():
         module = ModuleType(alias)
         module.__file__, module.__package__ = str(path), None
         exec(compile(body, str(path), 'exec', dont_inherit=True), module.__dict__)
-        module._captured_bytes, module._captured_identity = body, before
+        module._captured_bytes, module._captured_identity = body, tuple(before)
         result.append(module)
     return tuple(result)
 
@@ -355,7 +355,7 @@ def stat6(value, *, optional=False):
 
 
 def product_tuple(info):
-    require(type(info) is list and len(info) == 7, 'Selected helper stat identity required')
+    require(type(info) in (list, tuple) and len(info) == 7, 'Selected helper stat identity required')
     return [info[index] for index in (0, 1, 2, 4, 5, 6)]
 
 
