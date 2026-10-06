@@ -364,7 +364,10 @@ def run(args):
     if defer_heldout:
         end_phase("model_loading", phase_start)
     from transformers import __version__ as transformers_version
-    from transformers.models.qwen3_5.modeling_qwen3_5 import is_fast_path_available
+    try:
+        from transformers.models.qwen3_5.modeling_qwen3_5 import is_fast_path_available
+    except ImportError as e:
+        is_fast_path_available = False
     meta.update(transformers=transformers_version, fast_path_available=bool(is_fast_path_available),
                 trainable_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad),
                 evaluation_sampling="source_kind_round_robin", training_sampling=args.training_sampling,
